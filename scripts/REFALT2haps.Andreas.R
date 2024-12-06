@@ -1,0 +1,16 @@
+library(tidyverse)
+library(limSolve)
+library(data.table)
+library(dtplyr)
+# library(tidyfast)
+args = commandArgs(trailingOnly=TRUE)
+mychr=as.character(args[1])
+myparfile = as.character(args[2])
+mydir = as.character(args[3])
+
+source(myparfile)
+filein=paste0(mydir,"/RefAlt.",mychr,".txt")
+rdsfile=paste0(mydir,"/R.haps.",mychr,".rds")
+fileout=paste0(mydir,"/R.haps.",mychr,".out.rds")
+source("scripts/REFALT2haps.Andreas.code.R")
+
