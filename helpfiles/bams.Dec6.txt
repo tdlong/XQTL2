@@ -10,7 +10,7 @@ data/founders/B1.dedup.bam
 data/founders/B2.dedup.bam
 data/founders/B3.dedup.bam
 data/founders/B4.dedup.bam
-data/founders/B5.bam
+data/founders/B5.RG.bam
 data/founders/B6.dedup.bam
 data/founders/B7.dedup.bam
 /dfs7/adl/tdlong/fly_pool/newpipeline_aging/XQTL_pipeline/data/bam.Aug13/R1age.bam
