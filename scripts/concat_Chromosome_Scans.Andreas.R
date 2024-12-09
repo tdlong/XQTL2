@@ -5,7 +5,7 @@ data_path = as.character(args[1])
 
 # merge scan
 files = dir(data_path, pattern = "R.pseudoscan.*.txt") # get file names
-
+files = grep("chr",files,value=TRUE)
 df1 = files %>%
   # read in all the files, appending the path before the filename
   map(~ as_tibble(read.table(file.path(data_path, .)))) %>% 
@@ -15,6 +15,7 @@ write.table(df1,paste0(data_path,"/R.pseudoscan.txt"))
 
 # merge means
 files = dir(data_path, pattern = "R.meansBySample.*.txt") # get file names
+files = grep("chr",files,value=TRUE)
 
 df2 = files %>%
   # read in all the files, appending the path before the filename
@@ -26,7 +27,7 @@ write.table(df2,paste0(data_path,"/R.meansBySample.txt"))
 
 library(patchwork)
 
-xx2 = df1 %>% mutate(chr2=recode(chr, "chrX" = "X", "chr2L" = "II", "chr2R" = "II", "chr3L" = "III", "chr3R" = "III",))
+xx2 = df1 %>% mutate(chr2=recode(chr, "chrX" = "X", "chr2L" = "II", "chr2R" = "II", "chr3L" = "III", "chr3R" = "III"))
 F1 = ggplot(xx2,aes(x=cM,y=Wald_log10p)) +
 		geom_point(pch=15,cex=0.25) +
 		facet_wrap(~ chr2, nrow=1)
