@@ -1,11 +1,12 @@
 xx1 = readRDS(filein)
 recodeTable = as_tibble(data.frame(sample=names_in_bam,pool=samples))
+Nfounders=length(xx1$Groups[[1]][[1]])
 
 bb1 = xx1 %>%
 #	head(n=100) %>%
 	group_by(CHROM,pos) %>%
 	nest() %>%
-	mutate(out = map2(data,CHROM,doscan)) %>%
+	mutate(out = map2(data,CHROM,Nfounders,doscan)) %>%
 	unnest_wider(out)
 bb2 = bb1 %>% select(-data) %>% rename(chr=CHROM)
 bb3 = add_genetic(bb2)

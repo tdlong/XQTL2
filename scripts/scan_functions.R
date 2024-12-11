@@ -164,7 +164,7 @@ Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
 	list(Falconer_H2=Falconer_H2, Cutler_H2=Cutler_H2)
 	}
 
-doscan = function(df,chr){
+doscan = function(df,chr,Nfounders){
 	sexlink = 1
 	if(chr=="chrX"){ sexlink=0.75 }
 
@@ -181,7 +181,7 @@ doscan = function(df,chr){
 	allFounders = as.numeric(df2 %>% mutate(mm = max(unlist(Groups))) %>% summarize(max(mm)))	
 
 	ll = list(Wald_log10p = NA, Pseu_log10p = NA, Falc_H2 = NA, Cutl_H2 = NA)
-	if(allFounders!=8){ return(ll) }
+	if(allFounders!=Nfounders){ return(ll) }
 
 	##  now cases where all founders are OK
 	##  now collapse any pure replicates.  This is tidy ugly.  But I feel there 
