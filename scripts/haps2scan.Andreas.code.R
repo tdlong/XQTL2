@@ -6,7 +6,7 @@ bb1 = xx1 %>%
 #	head(n=100) %>%
 	group_by(CHROM,pos) %>%
 	nest() %>%
-	mutate(out = map2(data,CHROM,Nfounders,doscan)) %>%
+	mutate(out = map2(data, CHROM, doscan, Nfounders=Nfounders)) %>%
 	unnest_wider(out)
 bb2 = bb1 %>% select(-data) %>% rename(chr=CHROM)
 bb3 = add_genetic(bb2)
