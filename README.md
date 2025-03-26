@@ -63,27 +63,28 @@ CTGTGCTT	TTGTCAGC	R6age
 
 # now run the alignments (fq -> bam)
 # you may need to define the dir where the raw data is and where you want
-#  to write bams to in the script (data/bam.Aug13 below)
+#  to write bams to in the script (data/raw/Oct28_24 below)
 # you will need to make the array job as big as the number of samples being aligned
 # (the number of line in readname mapping file above)
-mkdir data/bam.Aug13
-sbatch scripts/fq2bam.Oct28.sh helperfiles/readname.mapping.Oct28.txt
+mkdir data/bam/Oct28_24
+NN=`wc -l helperfiles/readname.mapping.Oct28.txt | cut -f1 -d' '`
+sbatch --array=1-$NN scripts/fq2bam.sh helperfiles/readname.mapping.Oct28.txt data/raw/Oct28_24 data/bam/Oct28_24 
 
 # after it finishes (it could take overnight)
-ls data/bam.Aug13
+ls data/bam/Oct28_24
 
-14G  Aug 13 23:58 data/bam.Aug13/R1age.bam
-18G  Aug 14 02:39 data/bam.Aug13/R1con.bam
-16G  Aug 14 00:26 data/bam.Aug13/R2age.bam
-14G  Aug 13 23:40 data/bam.Aug13/R2con.bam
-9.0G Oct 28 18:26 data/bam.Aug13/R3age.bam
-17G  Oct 28 23:37 data/bam.Aug13/R3con.bam
-14G  Aug 13 23:11 data/bam.Aug13/R4age.bam
-18G  Aug 14 02:29 data/bam.Aug13/R4con.bam
-5.1G Oct 28 15:58 data/bam.Aug13/R5age.bam
-13G  Oct 28 21:31 data/bam.Aug13/R5con.bam
-5.2G Oct 28 16:03 data/bam.Aug13/R6age.bam
-13G  Oct 28 20:22 data/bam.Aug13/R6con.bam
+14G  Aug 13 23:58 data/.../R1age.bam
+18G  Aug 14 02:39 data/.../R1con.bam
+16G  Aug 14 00:26 data/.../R2age.bam
+14G  Aug 13 23:40 data/.../R2con.bam
+9.0G Oct 28 18:26 data/.../R3age.bam
+17G  Oct 28 23:37 data/.../R3con.bam
+14G  Aug 13 23:11 data/.../R4age.bam
+18G  Aug 14 02:29 data/.../R4con.bam
+5.1G Oct 28 15:58 data/.../R5age.bam
+13G  Oct 28 21:31 data/.../R5con.bam
+5.2G Oct 28 16:03 data/.../R6age.bam
+13G  Oct 28 20:22 data/.../R6con.bam
 ```
 It may be helpful to look at the alignment script above. We align (bwa mem), sort, add readgroups, index.  The readgroups are important. 
 
