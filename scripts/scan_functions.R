@@ -61,7 +61,7 @@ wald.test3 = function(p1,p2,covar1,covar2,nrepl=1,N1=NA,N2=NA){
   p1= as.vector(p1); p2=as.vector(p2)
   tstat <- sum((trafo %*% (p1 - p2))^2)
   pval<- exp(pchisq(tstat,df,lower.tail=FALSE,log.p=TRUE))
-  list(wald.test=tstat, p.value=pval)
+  list(wald.test=tstat, p.value=pval, avg.var=(det(covar))^(1/(df+1)))
 }
 
 mn.covmat= function(p,n,min.p=0){
@@ -180,7 +180,7 @@ doscan = function(df,chr,Nfounders){
 	# only analyze data for which all founders are discernable..
 	allFounders = as.numeric(df2 %>% mutate(mm = max(unlist(Groups))) %>% summarize(max(mm)))	
 
-	ll = list(Wald_log10p = NA, Pseu_log10p = NA, Falc_H2 = NA, Cutl_H2 = NA)
+	ll = list(Wald_log10p = NA, Pseu_log10p = NA, Falc_H2 = NA, Cutl_H2 = NA, avg.var = NA)
 	if(allFounders!=Nfounders){ return(ll) }
 
 	##  now cases where all founders are OK
@@ -217,7 +217,7 @@ doscan = function(df,chr,Nfounders){
 	Cutl_H2 = temp$Cutler_H2
 
 	ll = list(Wald_log10p = Wald_log10p, Pseu_log10p = Pseu_log10p,
-			Falc_H2 = Falc_H2, Cutl_H2 = Cutl_H2)
+			Falc_H2 = Falc_H2, Cutl_H2 = Cutl_H2, avg.var = wt$avg.var)
 	ll
 	}
 

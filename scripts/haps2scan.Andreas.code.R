@@ -14,7 +14,7 @@ bb3 = add_genetic(bb2)
 # I drop the loci for which the scan gives and NA
 bb4 = bb1 %>%
 	filter(!is.na(Pseu_log10p)) %>%
-	select(-c(Wald_log10p, Pseu_log10p, Falc_H2, Cutl_H2, data)) %>%
+	select(-c(Wald_log10p, Pseu_log10p, Falc_H2, Cutl_H2, avg.var, data)) %>%
 	left_join(xx1) %>%
 	select(-c(Err,Groups)) %>%
 	unnest(c(sample,Haps,Names)) %>%

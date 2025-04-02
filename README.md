@@ -89,18 +89,19 @@ ls data/bam/Oct28_24
 It may be helpful to look at the alignment script above. We align (bwa mem), sort, add readgroups, index.  The readgroups are important. 
 
 ## Go from bams to bcf to REFALT 
-That produces a file where for each SNP and sample tabulates counts of REF and ALT alleles (for well behaved SNPs)
+The scripts in this section produce files that tabulates counts of REF and ALT alleles (for well behaved SNPs) for each SNP and sample
 
-At this step the "bams.Oct28.txt" provides paths to all the bam files.  This file is important as it contains paths to all your poolseq samples, plus the pre-aligned founder bams.  Since the pre-aligned bams are big, I just give paths to where I store them on hpc3, clearly this requires you are part of my "group" and can see them.  If you are doing this not at UCI, you would need to download these files from somewhere and they would take several TBs of space.
+At this step the "helpfiles/Oct28_24.bams" provides paths to all the bam files.  This file is important as it contains paths to all your poolseq samples, plus the pre-aligned founder bams.  Since the pre-aligned bams are big, I just give paths to where I store them on hpc3, clearly this requires you are part of my "group" and can see them.  If you not doing this at UCI, then you would need to download these bam files from somewhere and they would take several TBs of space.
 ```bash
 # This could take 20+ hours
 # I will put processed stuff here
-mkdir process.Oct28
-# add founders to list of bams
-cp helpfiles/founder.bams.txt helpfiles/bams.Oct28.txt
-# now add the pools seq samples to the file
-ls data/bam.Aug13 >>helpfiles/bams.Oct28.txt
-sbatch scripts/bam2bcf2REFALT.Oct28.sh helpfiles/bams.Oct28.txt process.Oct28
+mkdir process
+mkdir process/Oct28_24
+# add bam files, then add founders
+find data/bam/Oct28_24 -name "*.bam" -size +1G > helpfiles/Oct28_24.bams
+cat helpfiles/founder.bams.txt | grep "B" >>helpfiles/Oct28_24.bams
+# now generate the REFALT files
+sbatch scripts/bam2bcf2REFALT.sh helpfiles/Oct28_24.bams process/Oct28_24
 ```
 
 ## edit haplotype.parameters.R to reflect your data
