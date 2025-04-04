@@ -2,6 +2,23 @@
 # Functions
 #########
 
+average_variance <- function(cov_matrix, tolerance = 1e-10) {
+  n <- nrow(cov_matrix)  
+  # Calculate eigenvalues
+  eigenvalues <- eigen(cov_matrix, only.values = TRUE)$values  
+  # Filter out eigenvalues that are effectively zero or negative
+  positive_eigenvalues <- eigenvalues[eigenvalues > tolerance]  
+  # Calculate the product of positive eigenvalues
+  log_det <- sum(log(positive_eigenvalues))  
+  # Use the number of positive eigenvalues for the root
+  n_positive <- length(positive_eigenvalues)  
+  # Calculate log of average variance
+  log_avg_var <- log_det / n_positive  
+  # Convert back to original scale
+  avg_var <- exp(log_avg_var)  
+  return(list(avg_var = avg_var, n_positive = n_positive, n_total = n))
+}
+
 wald.test3 = function(p1,p2,covar1,covar2,nrepl=1,N1=NA,N2=NA){
     
     # Wald test for multinomial frequencies
@@ -61,7 +78,7 @@ wald.test3 = function(p1,p2,covar1,covar2,nrepl=1,N1=NA,N2=NA){
   p1= as.vector(p1); p2=as.vector(p2)
   tstat <- sum((trafo %*% (p1 - p2))^2)
   pval<- exp(pchisq(tstat,df,lower.tail=FALSE,log.p=TRUE))
-  list(wald.test=tstat, p.value=pval, avg.var=(det(covar))^(1/(df+1)))
+  list(wald.test=tstat, p.value=pval, avg.var=average_variance(covar)$avg_var)
 }
 
 mn.covmat= function(p,n,min.p=0){
@@ -139,6 +156,7 @@ Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
 		summarize(H2temp_sum = sum(H2temp)) %>%
 		ungroup() %>%
 		left_join(ProportionSelect,by="REP") %>%
+		filter(!is.na(Proportion)) %>%
 		mutate(Falcon_i = dnorm(qnorm(1-Proportion))/Proportion) %>%
 		group_by(REP) %>%
 		summarize(H2 = 200 * H2temp_sum / Falcon_i^2) %>%
@@ -149,6 +167,7 @@ Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
 	Cutler_H2 = tdf %>%
 		pivot_wider(names_from = TRT, values_from = freq) %>%
 		left_join(ProportionSelect,by="REP") %>%
+		filter(!is.na(Proportion)) %>%
 		mutate(Penetrance = (Z * Proportion)/C) %>%
 		mutate(Penetrance = case_when(Penetrance <= Proportion/2 ~ Proportion/2,
 						  Penetrance >= 2*Proportion ~ 2*Proportion,

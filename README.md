@@ -1,6 +1,6 @@
 # Current XQTL pipeline
 
-## get sequences from core...
+## Get sequences from core...
 
 ```bash
 # save the email from Yuzo as blah.txt and then extrat the files
@@ -23,7 +23,7 @@ sbatch get_data.sh
 #SBATCH -A ???        ## account to charge 
 #SBATCH -p standard   ## partition/queue name
 ```
-## create a file with read name mapping to fastq files.  And map the reads to the reference genome
+## Create a file with read name mapping to fastq files.  And map the reads to the reference genome
 
 ```bash
 # first you need indexed genomes to align to
@@ -71,27 +71,27 @@ NN=`wc -l helperfiles/readname.mapping.Oct28.txt | cut -f1 -d' '`
 sbatch --array=1-$NN scripts/fq2bam.sh helperfiles/readname.mapping.Oct28.txt data/raw/Oct28_24 data/bam/Oct28_24 
 
 # after it finishes (it could take overnight)
-ls data/bam/Oct28_24
+ls -alh data/bam/Oct28_24
 
-14G  Aug 13 23:58 data/.../R1age.bam
-18G  Aug 14 02:39 data/.../R1con.bam
-16G  Aug 14 00:26 data/.../R2age.bam
-14G  Aug 13 23:40 data/.../R2con.bam
-9.0G Oct 28 18:26 data/.../R3age.bam
-17G  Oct 28 23:37 data/.../R3con.bam
-14G  Aug 13 23:11 data/.../R4age.bam
-18G  Aug 14 02:29 data/.../R4con.bam
-5.1G Oct 28 15:58 data/.../R5age.bam
-13G  Oct 28 21:31 data/.../R5con.bam
-5.2G Oct 28 16:03 data/.../R6age.bam
-13G  Oct 28 20:22 data/.../R6con.bam
+14G  ... data/.../R1age.bam
+18G  ... data/.../R1con.bam
+16G  ... data/.../R2age.bam
+14G  ... data/.../R2con.bam
+9.0G ... data/.../R3age.bam
+17G  ... data/.../R3con.bam
+14G  ... data/.../R4age.bam
+18G  ... data/.../R4con.bam
+5.1G ... data/.../R5age.bam
+13G  ... data/.../R5con.bam
+5.2G ... data/.../R6age.bam
+13G  ... data/.../R6con.bam
 ```
-It may be helpful to look at the alignment script above. We align (bwa mem), sort, add readgroups, index.  The readgroups are important. 
+It may be helpful to look at the alignment script above. We align (bwa mem), sort, add readgroups, index.  The readgroups are important.  The file sizes of the bams are also important (as files below about 1G are likely of insufficient coverage or could indicate a failed library prep). 
 
 ## Go from bams to bcf to REFALT 
 The scripts in this section produce files that tabulates counts of REF and ALT alleles (for well behaved SNPs) for each SNP and sample
 
-At this step the "helpfiles/Oct28_24.bams" provides paths to all the bam files.  This file is important as it contains paths to all your poolseq samples, plus the pre-aligned founder bams.  Since the pre-aligned bams are big, I just give paths to where I store them on hpc3, clearly this requires you are part of my "group" and can see them.  If you not doing this at UCI, then you would need to download these bam files from somewhere and they would take several TBs of space.
+During this step we create a file ("helpfiles/Oct28_24.bams") that provides paths to all the bam files.  This file is important as it contains paths to all your poolseq samples, plus the pre-aligned founder bams.  Since the pre-aligned bams are big, I just give paths to where I store them on hpc3, clearly this requires you are part of my "group" and can see them.  If you not doing this at UCI, then you would need to download these bam files from somewhere and they would take several TBs of space.  Note how I exclude small bams, ideally I reprep and resequence these samples to have a complete dataset.
 ```bash
 # This could take 20+ hours
 # I will put processed stuff here
@@ -104,8 +104,8 @@ cat helpfiles/founder.bams.txt | grep "B" >>helpfiles/Oct28_24.bams
 sbatch scripts/bam2bcf2REFALT.sh helpfiles/Oct28_24.bams process/Oct28_24
 ```
 
-## edit haplotype.parameters.R to reflect your data
-This file contains a bunch of information that lets scripts that call haplotypes and run the "GWAS" scan without intervention.  So you will probably spend some time tweaking this file.  If you do sub-analyses (on subsets of your data) your would have multiple version of this file that are passed to scripts.
+## Edit haplotype.parameters.R to reflect your data
+This file contains a bunch of information that lets scripts that call haplotypes and run the "GWAS" scan without intervention.  So you will probably spend some time tweaking this file.  If you do sub-analyses (on subsets of your data) your would have multiple version of this file that are passed to scripts. The file is mostly comments!
 ```bash
 ##########	
 #  R project specific parameters
@@ -113,20 +113,35 @@ This file contains a bunch of information that lets scripts that call haplotypes
 #  note that the number are here for when I move to 6 replicates
 ##########
 # RGs = the readgroups add to the bams earlier 
+# In my pipeline the RGs and bam file names (less the extension) are the same
+
 # list of founders for the specific population of the experiment
 # take from the RGs of the founder bams, and generally abbreviate the standard DSPR way
 # different or custom founder populations would have different founders
 # the software estimates the frequency of each founder haplotype in each pooled sample
+
 founders=c("B1","B2","B3","B4","B5","B6","B7","AB8")
 
 # list of samples to process
 # used in REFALT2hap 
 # the list of sample names to consider, they should match up with the 
-# names given to the earlier fq2bam script, as these are taken from the RGs of the resulting bams 
+# names given to the earlier fq2bam script, as these are taken from the RGs of the resulting bams
+# the command line below will generate the same list the one's with RAFALT data at an earlier step
+# mybams="data/bam/STARVE"
+# mysize="1G"
+# echo -n "names_in_bam=c(" && find $mybams -name "*.bam" -size +$mysize -print0 |\
+# 	xargs -0 -n1 basename |\
+#	sed 's/.bam//' |\
+#	sort |\
+#	sed 's/.*/"&"/' |\
+#	tr '\n' ',' |\
+#	sed 's/,$//' && echo ")"
+
 names_in_bam=c("R1con","R1age","R2con","R2age","R3con","R3age","R4con","R4age","R5con","R5age","R6con","R6age")
 
 # step_size (bp)
 # haplotypes will be imputed every step/1000 kb at the kb (each @ 10,20,30,etc)
+
 step = 10000
 
 # +/- window_size (bp)
@@ -137,6 +152,7 @@ step = 10000
 # localization (in theory), but that is offset by poor haplotype inference.  One
 # indication the window is too small is noisy neighbouring -log10p values from
 # the scan.
+
 size = 50000
 
 # tree cutoff height to claim founders cannot be distinguished from one another
@@ -148,29 +164,96 @@ size = 50000
 # a problem is the distance is not corrected for the number of SNPs, so if a window
 # has 1000 as opposed to 500 SNPs ... then a given distance implies fewer fixed
 # difference SNPs. I would tend to leave this at 2.5 or perhaps 5.
+
 h_cutoff=2.5
 
 ```
+The bash command below can be useful for editting the haplotype parameters file, as in many cases only the list of bam files is changing (and perhaps the A vs B founders).  You only need to edit the path to the bams and perhaps the size cutoff for considering the bam file not a "redo" to get a list of bams.
+```bash
+mybams="data/bam/STARVE"
+mysize="1G"
+echo -n "names_in_bam=c(" && find $mybams -name "*.bam" -size +$mysize -print0 |\
+ 	xargs -0 -n1 basename |\
+	sed 's/.bam//' |\
+	sort |\
+	sed 's/.*/"&"/' |\
+	tr '\n' ',' |\
+	sed 's/,$//' && echo ")"
+```
 
-## call the haplotypes (30-60min)
-You should generally at this step just call the haplotypes for all the samples you have and deal with the GWAS separately.
+## Call the haplotypes (30-60min)
+At this step just call the haplotypes for all the samples you have.  We do the GWAS separately.
 ```bash
 # define output directory
 # note the libraries needed in REFALT2haps.Andreas.R!!
-sbatch scripts/REFALT2haps.Andreas.sh helpfiles/haplotype_parameters.R "process.Oct28"
+sbatch scripts/REFALT2haps.Andreas.sh helpfiles/haplotype_parameters.R "process/Oct28_24"
 ```
 
-## run the scan (15min)
+## run the scan (15min) -- the old way
 ```bash
-# same folder as above
+# point to same folder as above for in files
 # note libraries needed
-# note the prefix that defines a folder for output (it is created by the script)
-# note the editted testing parameters file for different analyses
-sbatch scripts/haps2scan.Andreas.sh helperfiles/testing.parameters.A.R "process.Oct28" "TEST_A"
-sbatch scripts/haps2scan.Andreas.sh helperfiles/testing.parameters.B.R "process.Oct28" "TEST_B"
+# the last argument defines a folder for output (it is created by the script) and is inside the input folder
+# There is a testing parameters file that can be changed for different analyses
+sbatch scripts/haps2scan.Andreas.sh helperfiles/testing.parameters.A.R "process/Oct28_24" "TEST_A"
+sbatch scripts/haps2scan.Andreas.sh helperfiles/testing.parameters.B.R "process/Oct28_24" "TEST_B"
+```
+Here is an example of the testing folder, these are painful to make..
+
+```bash
+##########	
+#  R project specific parameters
+#  testing.parameters.R
+#  note that the number are here for when I move to 6 replicates
+##########
+
+# list of samples
+# used in REFALT2hap 
+# the list of sample names to consider, they should match up with the 
+# names given to the earlier fq2bam, as these are taken from the RGs of the bam 
+names_in_bam=c("R1con","R1age","R2con","R2age","R3con","R3age","R4con","R4age","R5con","R5age","R6con","R6age")
+
+# note the naming convention has three fields
+#  Con vs Treatment -- must have two levels
+#  Replicate
+#  Possibly replicate within replicate, often "1"
+samples=c("Con_1_1","Age_1_1","Con_2_1","Age_2_1","Con_3_1","Age_3_1","Con_4_1","Age_4_1","Con_5_1","Age_5_1","Con_6_1","Age_6_1")
+
+# Numflies
+# The number of flies in each pool
+Numflies = data.frame(pool=samples,Num=c(570,1177,520,814,610,482,580,997,640,542,610,647))
+
+# Proportion of Flies selected per replicate
+ProportionSelect = data.frame(REP=c(1,2,3,4,5,6),Proportion=c(0.113,0.087,0.040,0.080,0.045,0.053))
+
+# Mapping of Treatments to Control versus Selected
+# Prefixes must be mapped to C for controls or Z for selected
+TreatmentMapping = data.frame(longTRT=c("Con","Age"),TRT=c("C","Z"))
+
+```
+## run the scan (15min) -- the new way
+
+The new way is a little friendlier.  Like the old way there is a path to the input data and a new folder you define where the analysis goes (that is inside the input folder).  But with the new way instead of a parameter file, you just point to a file that can be read into R via "read.table".  That is you point to an object saved via "write.table" in R.  
+
+```bash
+sbatch scripts/haps2scan.Apr2025.sh helpfiles/Oct28_24.testA.txt "process/Oct28_24" "TEST_A"
+
+```
+The R dataframe requires certain columns.  And their names have to be exact.  At a minimum the columns the table requires are: bam, TRT, REP, REPrep (often all "1"), Num, and Proportion all others are ignored.  bam must match the bam file prefixes (that is the readgroups) of previous steps.  TRT must be C for Controls vs. Z for experiments (so if you have other labels use "mutate" and "recode").  REP is the replicate number and REPrep is a potential technical replicate within that replicate (say a 2nd draw from the same cage).  Num is the number of flies per pool and Proportion the proportion selected (!change percent to proportions!).  Proportion selected should only be associated with "Z" treatments, with "C" -> NA.  Here is an example table, with a few rows to give you an idea.  Note the extra columns associated with this dataset that are ignored, but are part of the table.
+```bash
+     filesize        bam    A longTRT REP REPrep  Num Proportion TRT
+1  7953661903 STV1_F_Con STV1     Con   1      1 1205         NA   C
+2  8479453370 STV1_F_Res STV1     Res   1      1  115     0.0871   Z
+3  7535619860 STV2_F_Con STV2     Con   2      1 1387         NA   C
+4  5517579963 STV2_F_Res STV2     Res   2      1  296     0.1540   Z
+5  8173583358 STV3_F_Con STV3     Con   3      1 1631         NA   C
+6  6004306536 STV3_F_Res STV3     Res   3      1  174     0.0876   Z
+7 10790183756 STV4_F_Con STV4     Con   4      1 1628         NA   C
+8 10309377074 STV4_F_Res STV4     Res   4      1  153     0.0781   Z
+
 ```
 
-## concatenate and summarize (10 min)
+## concatenate chromosomes and summarize (10 min)
 Up until this point all analyses are done chromosome-by-chromosome for speed.  Now we concatenate and generate some summary figures
 ```bash
 # note the path to the results for each scan above
@@ -178,7 +261,7 @@ bash scripts/concat_Chromosome_Scans.Andreas.sh "process.Oct28/TEST_A"
 bash scripts/concat_Chromosome_Scans.Andreas.sh "process.Oct28/TEST_B"
 ```
 
-## quick and dirty summary plots
+## download the quick and dirty summary plots
 ```bash
 # note the file names are hardwired, so be careful where to write them
 scp 'tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/.../process.Oct28/TEST_A/Age*.png' TEST_A/. 
