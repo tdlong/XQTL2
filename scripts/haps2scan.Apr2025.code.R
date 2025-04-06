@@ -73,8 +73,13 @@ bb4 = bb1 %>%
 	select(-c(Err,Groups)) %>%
 	unnest(c(sample,Haps,Names)) %>%
 	unnest(c(Haps,Names)) %>%
-	rename(chr=CHROM,pool=sample,freq=Haps,founder=Names)
+	rename(chr=CHROM,pool=sample,freq=Haps,founder=Names) %>%
+	left_join(design.df, by=c("pool"="bam")) %>%
+	select(c(chr,pos,TRT,REP,REPrep,freq,founder)) %>%
+	filter(!is.na(TRT)) %>%
+	group_by(chr,pos,TRT,REP,founder) %>%
+	summarize(freq=mean(freq,na.rm=TRUE))
 
-write.table(bb3,fileout)
+write.table(bb3, fileout)
 write.table(bb4, fileout_meansBySample)
 
