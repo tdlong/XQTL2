@@ -189,7 +189,7 @@ At this step just call the haplotypes for all the samples you have.  We do the G
 sbatch scripts/REFALT2haps.Andreas.sh helpfiles/haplotype_parameters.R "process/Oct28_24"
 ```
 
-## run the scan (15min) -- the old way
+## Run the scan (15min) -- the old way
 ```bash
 # point to same folder as above for in files
 # note libraries needed
@@ -231,40 +231,76 @@ ProportionSelect = data.frame(REP=c(1,2,3,4,5,6),Proportion=c(0.113,0.087,0.040,
 TreatmentMapping = data.frame(longTRT=c("Con","Age"),TRT=c("C","Z"))
 
 ```
-## run the scan (15min) -- the new way
+## Run the scan (15min) -- the new way
 
-The new way is a little friendlier.  Like the old way there is a path to the input data and a new folder you define where the analysis goes (that is inside the input folder).  But with the new way instead of a parameter file, you just point to a file that can be read into R via "read.table".  That is you point to an object saved via "write.table" in R.  
+The new way seems a little easier.  Like the old way there is a path to the input data and a new folder you define where the output goes (inside the input folder).  But with the new way, instead of a parameter file, you just point to a file that can be read into R via "read.table".  It is best to point to an object saved via "write.table" in R with no other switches.  
 
 ```bash
 sbatch scripts/haps2scan.Apr2025.sh helpfiles/Oct28_24.testA.txt "process/Oct28_24" "TEST_A"
 
 ```
-The R dataframe requires certain columns.  And their names have to be exact.  At a minimum the columns the table requires are: bam, TRT, REP, REPrep (often all "1"), Num, and Proportion all others are ignored.  bam must match the bam file prefixes (that is the readgroups) of previous steps.  TRT must be C for Controls vs. Z for experiments (so if you have other labels use "mutate" and "recode").  REP is the replicate number and REPrep is a potential technical replicate within that replicate (say a 2nd draw from the same cage).  Num is the number of flies per pool and Proportion the proportion selected (!change percent to proportions!).  Proportion selected should only be associated with "Z" treatments, with "C" -> NA.  Here is an example table, with a few rows to give you an idea.  Note the extra columns associated with this dataset that are ignored, but are part of the table.
+The R dataframe requires certain columns -- their names have to be exact. At a minimum the columns the table requires are: bam, TRT, REP, REPrep (often all "1"), Num, and Proportion. Other columns are allows, but are ignored.
+
+bam must match the bam file prefixes (that is the readgroups) of previous steps.  TRT must be C for Controls vs. Z for experiments (if you have other labels use "mutate" and "recode"). Rows with values other than C or Z are ignored. REP is the replicate number and REPrep is a potential technical replicate within that replicate (say a 2nd draw of flies from the same cage).  Num is the number of flies per pool and Proportion the proportion selected. Make sure you change percent to proportions!  Proportion selected should only be associated with "Z" treatments, with "C" -> NA.  Here is an example table, with a few rows to give you an idea.  Note the extra columns associated with this dataset that are ignored, but are part of the table.
 ```bash
-     filesize        bam    A longTRT REP REPrep  Num Proportion TRT
-1  7953661903 STV1_F_Con STV1     Con   1      1 1205         NA   C
-2  8479453370 STV1_F_Res STV1     Res   1      1  115     0.0871   Z
-3  7535619860 STV2_F_Con STV2     Con   2      1 1387         NA   C
-4  5517579963 STV2_F_Res STV2     Res   2      1  296     0.1540   Z
-5  8173583358 STV3_F_Con STV3     Con   3      1 1631         NA   C
-6  6004306536 STV3_F_Res STV3     Res   3      1  174     0.0876   Z
-7 10790183756 STV4_F_Con STV4     Con   4      1 1628         NA   C
-8 10309377074 STV4_F_Res STV4     Res   4      1  153     0.0781   Z
+    filesize        bam    A longTRT REP REPrep  Num Proportion TRT
+  7953661903 STV1_F_Con STV1     Con   1      1 1205         NA   C
+  8479453370 STV1_F_Res STV1     Res   1      1  115     0.0871   Z
+  7535619860 STV2_F_Con STV2     Con   2      1 1387         NA   C
+  5517579963 STV2_F_Res STV2     Res   2      1  296     0.1540   Z
+  8173583358 STV3_F_Con STV3     Con   3      1 1631         NA   C
+  6004306536 STV3_F_Res STV3     Res   3      1  174     0.0876   Z
+ 10790183756 STV4_F_Con STV4     Con   4      1 1628         NA   C
+ 10309377074 STV4_F_Res STV4     Res   4      1  153     0.0781   Z
 
 ```
 
-## concatenate chromosomes and summarize (10 min)
+## Concatenate chromosomes and summarize (10 min)
 Up until this point all analyses are done chromosome-by-chromosome for speed.  Now we concatenate and generate some summary figures
 ```bash
 # note the path to the results for each scan above
-bash scripts/concat_Chromosome_Scans.Andreas.sh "process.Oct28/TEST_A"
-bash scripts/concat_Chromosome_Scans.Andreas.sh "process.Oct28/TEST_B"
+bash scripts/concat_Chromosome_Scans.Andreas.sh "process/Oct28_24/TEST_A"
+bash scripts/concat_Chromosome_Scans.Andreas.sh "process/Oct28_24/TEST_B"
 ```
 
-## download the quick and dirty summary plots
+## Download the two summary files and some summary plots
 ```bash
-# note the file names are hardwired, so be careful where to write them
-scp 'tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/.../process.Oct28/TEST_A/Age*.png' TEST_A/. 
-scp 'tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/.../process.Oct28/TEST_B/Age*.png' TEST_B/. 
+scp tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/fly_pool/XQTL2/process/ZINC2/TEST_F/TEST_F.meansBySample.txt .
+scp tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/fly_pool/XQTL2/process/ZINC2/TEST_F/TEST_F.pseudoscan.txt .
+scp tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/fly_pool/XQTL2/process/ZINC2/TEST_F/TEST_F.5panel.cM.png .
+scp tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/fly_pool/XQTL2/process/ZINC2/TEST_F/TEST_F.5panel.Mb.png .
+scp tdlong@hpc3.rcic.uci.edu:/dfs7/adl/tdlong/fly_pool/XQTL2/process/ZINC2/TEST_F/TEST_F.Manhattan.png .
+
 ```
+
+The "pseudoscan" and "means" files are pretty rich and likely the only files you need to work with
+
+## Some useful functions for creating summary plots
+
+There are some useful functions I have created that allow you to create summary files.
+
+```bash
+library(tidyverse)
+library(patchwork)
+library(ggplot2)
+library(RColorBrewer)
+
+source("scripts/XQTL_plotting_functions.R")
+df1 = as_tibble(read.table("TEST_F.pseudoscan.txt"))
+df2 = as_tibble(read.table("TEST_F.meansBySample.txt"))
+
+XQTL_Manhattan_5panel(df1, cM = FALSE)
+XQTL_Manhattan_5panel(df1, cM = TRUE)
+XQTL_Manhattan(df1, cM = FALSE)
+XQTL_Manhattan(df1, cM = TRUE)
+XQTL_change_average(df2, "chr3R", 18250000, 19000000)
+XQTL_change_byRep(df2, "chr3R", 18250000, 19000000)
+XQTL_beforeAfter_selectReps(df2, "chr3R", 18250000, 19000000,reps=c(1,7,9,12))
+XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
+XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
+XQTL_region(df1, "chr3R", 18650000, 18725000, "Wald_log10p")
+XQTL_combined_plot(df1, df2, "chr3R", 18650000, 18725000)
+
+```
+
 
