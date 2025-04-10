@@ -291,7 +291,7 @@ df2 = as_tibble(read.table("TEST_F.meansBySample.txt"))
 
 XQTL_Manhattan_5panel(df1, cM = FALSE)
 XQTL_Manhattan_5panel(df1, cM = TRUE)
-XQTL_Manhattan(df1, cM = FALSE)
+XQTL_Manhattan(df1, cM = FALSE, color_scheme = "UCI")
 XQTL_Manhattan(df1, cM = TRUE)
 XQTL_change_average(df2, "chr3R", 18250000, 19000000)
 # reference strain crossing designs

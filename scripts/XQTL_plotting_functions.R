@@ -41,65 +41,107 @@ XQTL_Manhattan_5panel <- function(df, cM = FALSE) {
   return(p)
 }
 
-XQTL_Manhattan <- function(df, cM = FALSE) {
-  # Define UC colors
-  uc_colors <- c("#003262", "#FDB515")
+XQTL_Manhattan <- function(df, cM = FALSE, color_scheme = "KU") {
+  # Define color schemes
+  color_schemes <- list(
+    KU = c("#0051BA", "#E8000D"),
+    UCI = c("#003262", "#FDB515"),
+    Stanford = c("#8C1515", "#4D4F53"),
+    Harvard = c("#A51C30", "#C4D600"),
+    MIT = c("#A31F34", "#8A8B8C"),
+    Berkeley = c("#003262", "#FDB515"),
+    McMaster = c("#7A003C", "#FDBF57"),
+    McGill = c("#ED1B2F", "#FFD794"),
+    Oxford = c("#002147", "#1C4E91"),
+    Cambridge = c("#A3C1AD", "#D6083B"),
+    NineInchNails = c("#000000", "#FF0000")
+  )
   
-  # Order chromosomes
+  # Select color scheme
+  if (tolower(color_scheme) %in% tolower(names(color_schemes))) {
+    chosen_colors <- color_schemes[[which(tolower(names(color_schemes)) == tolower(color_scheme))]]
+  } else {
+    stop("Invalid color scheme. Choose from: ", paste(names(color_schemes), collapse = ", "))
+  }
+
+  # Rest of the function remains the same
+  # ORDER the chromosome arms
   chr_order <- c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
   df$chr <- factor(df$chr, levels = chr_order)
-  
+
+  # GENETIC DISTANCE plot
   if (cM) {
-    # Calculate cumulative_cM
+    # CALCULATE cumulative cM distance
     df <- df %>%
       group_by(chr) %>%
       mutate(chr_max_cM = max(cM)) %>%
       ungroup() %>%
+      # THE "* 1.10" ADDS whitespace between chromosomes
       mutate(cumulative_cM = case_when(
         chr == "chrX" ~ cM,
-        chr %in% c("chr2L", "chr2R") ~ cM + first(chr_max_cM[chr == "chrX"]) * 1.10,
-        chr %in% c("chr3L", "chr3R") ~ cM + first(chr_max_cM[chr == "chrX"]) * 1.10 + 
-                                        max(chr_max_cM[chr %in% c("chr2L", "chr2R")]) * 1.10
-      ))
+        chr %in% c("chr2L", "chr2R") ~ cM +
+          first(chr_max_cM[chr == "chrX"]) * 1.10,
+        chr %in% c("chr3L", "chr3R") ~ cM +
+          first(chr_max_cM[chr == "chrX"]) * 1.10 + 
+          max(chr_max_cM[chr %in% c("chr2L", "chr2R")]) * 1.10))
     
     x_var <- "cumulative_cM"
-    x_lab <- "Cumulative cM"
-  } else {
+    x_lab <- "Genetic Distance (cM)"
+  }
+
+  # PHYSICAL DISTANCE plot
+  else {
     # Calculate Mb and cumulative_Mb
     df <- df %>%
       mutate(Mb = pos / 1e6) %>%
       group_by(chr) %>%
       mutate(chr_max_Mb = max(Mb)) %>%
       ungroup() %>%
+      # THE "* 1.05" ADDS whitespace between chromosome arms
       mutate(cumulative_Mb = case_when(
         chr == "chrX" ~ Mb,
-        chr == "chr2L" ~ Mb + first(chr_max_Mb[chr == "chrX"]) * 1.05,
-        chr == "chr2R" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) + first(chr_max_Mb[chr == "chr2L"])) * 1.05,
-        chr == "chr3L" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) + first(chr_max_Mb[chr == "chr2L"]) + first(chr_max_Mb[chr == "chr2R"])) * 1.05,
-        chr == "chr3R" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) + first(chr_max_Mb[chr == "chr2L"]) + first(chr_max_Mb[chr == "chr2R"]) + first(chr_max_Mb[chr == "chr3L"])) * 1.05
-      ))
+        chr == "chr2L" ~ Mb +
+          first(chr_max_Mb[chr == "chrX"]) * 1.05,
+        chr == "chr2R" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) +
+          first(chr_max_Mb[chr == "chr2L"])) * 1.05,
+        chr == "chr3L" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) +
+          first(chr_max_Mb[chr == "chr2L"]) +
+          first(chr_max_Mb[chr == "chr2R"])) * 1.05,
+        chr == "chr3R" ~ Mb + (first(chr_max_Mb[chr == "chrX"]) +
+          first(chr_max_Mb[chr == "chr2L"]) +
+          first(chr_max_Mb[chr == "chr2R"]) +
+          first(chr_max_Mb[chr == "chr3L"])) * 1.05))
     
     x_var <- "cumulative_Mb"
-    x_lab <- "Cumulative Mb"
+    x_lab <- "Physical Distance (Mb)"
   }
-  
-  # Calculate chromosome midpoints for x-axis labels
+
+  # GET chromosome midpoints for chromosome ID x-axis labels
   chr_midpoints <- df %>%
     group_by(chr) %>%
-    summarize(mid = mean(!!sym(x_var)))
-  
-  # Create the plot
+    summarize(mid = min(!!sym(x_var)) + (max(!!sym(x_var)) - min(!!sym(x_var)))/2)
+
+  # REMOVE all rows containing an NA value
+  # (prevents "warning" on plotting that rows will be removed)
+  df <- na.omit(df)
+
+  # PLOT
   p <- ggplot(df, aes(x = !!sym(x_var), y = Wald_log10p, color = chr)) +
     geom_point(size = 0.25) +
-    scale_color_manual(values = rep(uc_colors, 3)) +
-    scale_x_continuous(breaks = chr_midpoints$mid, labels = chr_midpoints$chr) +
-    labs(x = x_lab, y = "-log10(p-value)") +
+    scale_color_manual(values = rep(chosen_colors, 3)) +
+    scale_x_continuous(breaks = chr_midpoints$mid,
+                       labels = gsub("chr","",chr_midpoints$chr)) +
+    labs(x = x_lab, y = expression(paste(-log[10],italic(P)))) +
     theme_bw() +
     theme(legend.position = "none",
+          panel.grid.major.y = element_line(linewidth=0.4),
+          panel.grid.minor.y = element_line(linewidth=0.4),
           panel.grid.major.x = element_blank(),
           panel.grid.minor.x = element_blank(),
-          axis.text.x = element_text(angle = 45, hjust = 1))
-  
+          axis.text.x = element_text(angle = 45, hjust = 1,
+                                     size = 11, color = "black"),
+          axis.text.y = element_text(size = 11, color = "black"))
+
   return(p)
 }
 
