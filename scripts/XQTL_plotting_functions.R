@@ -104,29 +104,61 @@ XQTL_Manhattan <- function(df, cM = FALSE) {
 }
 
 	
-XQTL_change_average <- function(df, chr, start, stop) {
+get_palette <- function(founders, reference_strain = NULL) {
+  base_palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#D55E00", "#CC79A7", "#000000", "#990099")
+  
+  if (!is.null(reference_strain) && reference_strain %in% founders) {
+    # Add grey for the reference strain
+    palette <- c(base_palette[1:(length(founders)-1)], "#999999")
+    names(palette) <- c(setdiff(founders, reference_strain), reference_strain)
+  } else {
+    palette <- base_palette[1:length(founders)]
+    names(palette) <- founders
+  }
+  
+  return(palette)
+}
+
+XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL) {
   # Subset the dataframe
-  subset_df <- df %>%
-    filter(chr == !!chr, pos > start, pos < stop)
+  subset_df <- df %>% filter(chr == !!chr, pos > start, pos < stop)
   
   # Pivot the dataframe to wide format and calculate Dfreq
-  wide_df <- subset_df %>%
-    pivot_wider(names_from = TRT, values_from = freq, names_prefix = "freq_") %>%
+  wide_df <- subset_df %>% 
+    pivot_wider(names_from = TRT, values_from = freq, names_prefix = "freq_") %>% 
     mutate(Dfreq = freq_Z - freq_C)
   
   # Calculate average Dfreq over REP
-  avg_df <- wide_df %>%
-    group_by(chr, pos, founder) %>%
+  avg_df <- wide_df %>% 
+    group_by(chr, pos, founder) %>% 
     summarize(Dfreq = mean(Dfreq, na.rm = TRUE), .groups = "drop")
   
+  # Get the color palette
+  color_palette <- get_palette(unique(avg_df$founder), reference_strain)
+  
   # Create the plot
-  p <- ggplot(avg_df, aes(x = pos, y = Dfreq, color = founder)) +
-    geom_line() +
+  p <- ggplot(avg_df, aes(x = pos, y = Dfreq, color = founder)) + 
+    geom_line() +  # Keep original line thickness for the plot
     labs(title = paste("Average Frequency Change by Position (", chr, ")"),
-         x = "Position",
-         y = "Δ Frequency (Z - C)",
-         color = "Founder") +
-    theme_minimal()
+         x = "Position", 
+         y = "Δ Frequency (Z - C)") + 
+    theme_bw() +
+    theme(panel.grid.minor = element_blank()) +
+    scale_color_manual(values = color_palette) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      legend.box = "horizontal",
+      legend.margin = margin(t = 0, r = 0, b = 0, l = 0),  # Reduced top margin
+      legend.spacing.x = unit(0.2, 'cm'),
+      legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),  # Added this line
+      plot.margin = margin(t = 10, r = 10, b = 20, l = 10, unit = "pt"),  # Adjusted bottom margin
+      axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))  # Added space above x-axis label
+      ) +
+      guides(color = guide_legend(
+      override.aes = list(linewidth = 3),  # Use linewidth instead of size
+      nrow = 1
+    ))
   
   return(p)
 }
@@ -224,7 +256,7 @@ XQTL_region <- function(df, chr, start, stop, trait) {
   return(p)
 }
 
-XQTL_combined_plot <- function(df1, df3, chr, start, stop) {
+XQTL_combined_plot <- function(df1, df3, chr, start, stop, reference_strain = NULL) {
   
   # Create sqrt_avg_var if it doesn't exist
   if(!"sqrt_avg_var" %in% names(df1)) {
@@ -235,7 +267,7 @@ XQTL_combined_plot <- function(df1, df3, chr, start, stop) {
   p1 <- XQTL_region(df1, chr, start, stop, "Wald_log10p")
   p2 <- XQTL_region(df1, chr, start, stop, "Cutl_H2")
   p3 <- XQTL_region(df1, chr, start, stop, "sqrt_avg_var")
-  p4 <- XQTL_change_average(df3, chr, start, stop)
+  p4 <- XQTL_change_average(df3, chr, start, stop, reference_strain = reference_strain)  # Pass reference_strain here
   
   # Function to adjust plots
   adjust_plot <- function(p, remove_x = TRUE) {
@@ -256,12 +288,14 @@ XQTL_combined_plot <- function(df1, df3, chr, start, stop) {
   p4 <- p4 + 
     theme(
       plot.title = element_blank(),
-      legend.position = "none"
+      legend.position = "bottom",
+      legend.box = "horizontal",
+      legend.margin = margin(t = 0, r = 0, b = 0, l = 0)
     )
   
   # Combine plots
   combined_plot <- p1 / p2 / p3 / p4 +
-    plot_layout(heights = c(1, 1, 1, 1.2))
+    plot_layout(heights = c(1, 1, 1, 1.5))
   
   # Final adjustments
   final_plot <- combined_plot +

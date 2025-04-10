@@ -294,10 +294,13 @@ XQTL_Manhattan_5panel(df1, cM = TRUE)
 XQTL_Manhattan(df1, cM = FALSE)
 XQTL_Manhattan(df1, cM = TRUE)
 XQTL_change_average(df2, "chr3R", 18250000, 19000000)
+# reference strain crossing designs
+XQTL_change_average(df2, "chr3R", 18250000, 19000000, reference_strain="B5")
 XQTL_change_byRep(df2, "chr3R", 18250000, 19000000)
 XQTL_beforeAfter_selectReps(df2, "chr3R", 18250000, 19000000,reps=c(1,7,9,12))
 XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
 XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
+XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000, reference_strain="B5")
 XQTL_region(df1, "chr3R", 18650000, 18725000, "Wald_log10p")
 XQTL_combined_plot(df1, df2, "chr3R", 18650000, 18725000)
 
