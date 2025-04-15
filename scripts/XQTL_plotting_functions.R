@@ -163,7 +163,7 @@ get_palette <- function(founders, reference_strain = NULL) {
 
 XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL) {
   # Subset the dataframe
-  subset_df <- df %>% filter(chr == !!chr, pos > start, pos < stop)
+  subset_df <- df %>% filter(chr == !!chr, pos >= start, pos <= stop)
   
   # Pivot the dataframe to wide format and calculate Dfreq
   wide_df <- subset_df %>% 
@@ -178,11 +178,23 @@ XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL) {
   # Get the color palette
   color_palette <- get_palette(unique(avg_df$founder), reference_strain)
   
+  # Convert start, stop, and positions to Mb
+  start_mb <- start / 1e6
+  stop_mb <- stop / 1e6
+  avg_df$pos_mb <- avg_df$pos / 1e6
+  
+  # Calculate axis breaks
+  breaks <- pretty(c(start_mb, stop_mb), n = 5)
+  
   # Create the plot
-  p <- ggplot(avg_df, aes(x = pos, y = Dfreq, color = founder)) + 
-    geom_line() +  # Keep original line thickness for the plot
+  p <- ggplot(avg_df, aes(x = pos_mb, y = Dfreq, color = founder)) + 
+    geom_line() +
+    scale_x_continuous(limits = c(start_mb, stop_mb),
+                       breaks = breaks,
+                       labels = function(x) sprintf("%.3f", x),
+                       expand = c(0, 0)) +
     labs(title = paste("Average Frequency Change by Position (", chr, ")"),
-         x = "Position", 
+         x = "Genomic Position (Mb)", 
          y = "Δ Frequency (Z - C)") + 
     theme_bw() +
     theme(panel.grid.minor = element_blank()) +
@@ -191,19 +203,22 @@ XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL) {
       legend.position = "bottom",
       legend.title = element_blank(),
       legend.box = "horizontal",
-      legend.margin = margin(t = 0, r = 0, b = 0, l = 0),  # Reduced top margin
+      legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
       legend.spacing.x = unit(0.2, 'cm'),
-      legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),  # Added this line
-      plot.margin = margin(t = 10, r = 10, b = 20, l = 10, unit = "pt"),  # Adjusted bottom margin
-      axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))  # Added space above x-axis label
-      ) +
-      guides(color = guide_legend(
-      override.aes = list(linewidth = 3),  # Use linewidth instead of size
+      legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),
+      plot.margin = margin(t = 10, r = 10, b = 20, l = 10, unit = "pt"),
+      axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+      axis.text.x = element_text(margin = margin(t = 3)),
+      axis.ticks.length = unit(0.2, "cm")
+    ) +
+    guides(color = guide_legend(
+      override.aes = list(linewidth = 3),
       nrow = 1
     ))
   
   return(p)
 }
+
 
 XQTL_change_byRep <- function(df, chr, start, stop) {
   # Subset the dataframe
@@ -279,21 +294,34 @@ XQTL_beforeAfter_selectReps <- function(df, chr, start, stop, reps) {
 
 
 XQTL_region <- function(df, chr, start, stop, trait) {
-  # UC Berkeley blue
   uc_blue <- "#003262"
   
-  # Subset the dataframe
   subset_df <- df %>%
     filter(chr == !!chr, pos >= start, pos <= stop)
   
-  # Create the plot
-  p <- ggplot(subset_df, aes(x = pos, y = !!sym(trait))) +
+  start_mb <- start / 1e6
+  stop_mb <- stop / 1e6
+  
+  subset_df$pos_mb <- subset_df$pos / 1e6
+  
+  # Calculate axis breaks
+  breaks <- pretty(c(start_mb, stop_mb), n = 5)
+  
+  p <- ggplot(subset_df, aes(x = pos_mb, y = !!sym(trait))) +
     geom_line(color = uc_blue) +
+    scale_x_continuous(limits = c(start_mb, stop_mb),
+                       breaks = breaks,
+                       labels = function(x) sprintf("%.3f", x),
+                       expand = c(0, 0)) +
     labs(title = paste("Region plot for", trait, "on", chr),
-         x = "Position",
+         x = "Genomic Position (Mb)",
          y = trait) +
     theme_bw() +
-    theme(panel.grid.minor = element_blank())
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(margin = margin(t = 3)),
+      axis.ticks.length = unit(0.2, "cm")
+    )
   
   return(p)
 }
@@ -349,4 +377,80 @@ XQTL_combined_plot <- function(df1, df3, chr, start, stop, reference_strain = NU
   
   return(final_plot)
 }
+
+XQTL_genes <- function(gtf, chr, start, end) {
+  # Create the region of interest
+  region <- GRanges(seqnames = chr, ranges = IRanges(start = start, end = end))
+  
+  # Filter features in the region
+  features_in_region <- subsetByOverlaps(gtf[gtf$type %in% c("exon", "5UTR", "3UTR")], region)
+  
+  # Convert to data frame
+  features_df <- as.data.frame(features_in_region)
+  
+  # Separate exons and UTRs
+  exons <- features_df[features_df$type == "exon", ]
+  utrs <- features_df[features_df$type %in% c("5UTR", "3UTR"), ]
+  
+  # Function to split exons based on UTR overlap
+  split_exon <- function(exon, utrs) {
+    utr_overlaps <- utrs[utrs$gene_name == exon$gene_name & 
+                         ((utrs$start <= exon$end & utrs$end >= exon$start) |
+                          (utrs$end >= exon$start & utrs$start <= exon$end)), ]
+    
+    if (nrow(utr_overlaps) == 0) {
+      return(data.frame(start = exon$start, end = exon$end, is_utr = FALSE))
+    }
+    
+    breaks <- sort(unique(c(exon$start, exon$end, utr_overlaps$start, utr_overlaps$end)))
+    segments <- data.frame(start = breaks[-length(breaks)], end = breaks[-1])
+    segments$is_utr <- sapply(1:nrow(segments), function(i) {
+      any(segments$start[i] >= utr_overlaps$start & segments$end[i] <= utr_overlaps$end)
+    })
+    return(segments)
+  }
+  
+  # Split all exons
+  split_exons <- do.call(rbind, lapply(1:nrow(exons), function(i) {
+    segments <- split_exon(exons[i, ], utrs)
+    segments$gene_name <- exons$gene_name[i]
+    segments$strand <- exons$strand[i]
+    return(segments)
+  }))
+  
+  # Convert start and end to Mb
+  split_exons$start_mb <- split_exons$start / 1e6
+  split_exons$end_mb <- split_exons$end / 1e6
+  start_mb <- start / 1e6
+  end_mb <- end / 1e6
+  
+  # Calculate axis breaks
+  breaks <- pretty(c(start_mb, end_mb), n = 5)
+  
+  # Create the plot
+  p <- ggplot() +
+    geom_segment(data = split_exons, 
+                 aes(x = start_mb, xend = end_mb, y = gene_name, yend = gene_name, 
+                     color = strand, size = is_utr)) +
+    scale_x_continuous(limits = c(start_mb, end_mb),
+                       breaks = breaks,
+                       labels = function(x) sprintf("%.3f", x),
+                       expand = c(0, 0)) +
+    scale_color_manual(values = c("+" = "#3366CC", "-" = "#FF9933")) +
+    scale_size_manual(values = c("TRUE" = 3.75, "FALSE" = 5)) +
+    labs(x = "Genomic Position (Mb)", y = "Gene", 
+         title = paste("Genes in", chr, ":", 
+                       sprintf("%.3f", start_mb), "-", 
+                       sprintf("%.3f", end_mb))) +
+    theme_bw() +
+    theme(
+      axis.text.y = element_text(size = 8),
+      legend.position = "none",
+      axis.text.x = element_text(margin = margin(t = 3)),
+      axis.ticks.length = unit(0.2, "cm")
+    )
+  
+  return(p)
+}
+
 

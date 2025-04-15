@@ -282,7 +282,10 @@ There are some useful functions I have created that allow you to create summary 
 ```bash
 library(tidyverse)
 library(patchwork)
+library(rtracklayer)
+library(GenomicRanges)
 library(ggplot2)
+library(dplyr)
 library(RColorBrewer)
 
 source("scripts/XQTL_plotting_functions.R")
@@ -303,6 +306,13 @@ XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000, reference_strain="B5")
 XQTL_region(df1, "chr3R", 18650000, 18725000, "Wald_log10p")
 XQTL_combined_plot(df1, df2, "chr3R", 18650000, 18725000)
+# genes
+# wget https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/genes/dm6.ncbiRefSeq.gtf.gz
+gtf = import("dm6.ncbiRefSeq.gtf")
+A1 = XQTL_region(df1, "chr2L", 12030000, 12070000, "Wald_log10p")
+A2 = XQTL_change_average(df2, "chr2L", 12030000, 12070000)
+A3 = XQTL_genes(gtf, "chr2L", 12030000, 12070000)
+A1/A2/A3
 
 ```
 
