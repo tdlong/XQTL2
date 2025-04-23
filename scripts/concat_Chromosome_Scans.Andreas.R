@@ -36,11 +36,11 @@ p3 = XQTL_Manhattan(df1, cM = FALSE)
 p4 = XQTL_Manhattan(df1, cM = TRUE)
 
 png(paste0(data_path,"/",name,".5panel.cM.png"), width=8, height=8, units="in", res=600)
-p1
+p2
 dev.off()
 
 png(paste0(data_path,"/",name,".5panel.Mb.png"), width=8, height=8, units="in", res=600)
-p2
+p1
 dev.off()
 
 png(paste0(data_path,"/",name,".Manhattan.png"), width=8, height=8, units="in", res=600)
