@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=RefAlt2hap
 #SBATCH -A tdlong_lab        ## account to charge 
-#SBATCH -p hugemem
+#SBATCH --mem-per-cpu=10G
+#SBATCH -p highmem
 #SBATCH --cpus-per-task=1 
 #SBATCH --array=1-5
 
