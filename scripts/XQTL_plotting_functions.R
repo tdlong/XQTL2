@@ -453,4 +453,57 @@ XQTL_genes <- function(gtf, chr, start, end) {
   return(p)
 }
 
-
+XQTL_zoom <- function(df, chr, start, stop, left_drop, right_drop) {
+    uc_blue <- "#003262"
+    
+    # Subset the data frame
+    subset_df <- df %>%
+        filter(chr == !!chr, pos >= start, pos <= stop)
+    
+    # Find the maximum Wald_log10p value (M) and its position (Mpos)
+    M <- max(subset_df$Wald_log10p, na.rm = TRUE)
+    Mpos <- subset_df$pos[which.max(subset_df$Wald_log10p)]
+    
+    # Find new start position
+    left_subset <- subset_df %>% filter(pos <= Mpos) %>% arrange(desc(pos))
+    new_start <- left_subset$pos[which(left_subset$Wald_log10p <= (M - left_drop))[1]]
+    
+    # Find new stop position
+    right_subset <- subset_df %>% filter(pos >= Mpos) %>% arrange(pos)
+    new_stop <- right_subset$pos[which(right_subset$Wald_log10p <= (M - right_drop))[1]]
+    
+    # If new_start or new_stop is NA, use original start or stop
+    new_start <- ifelse(is.na(new_start), start, new_start)
+    new_stop <- ifelse(is.na(new_stop), stop, new_stop)
+    
+    # Redefine subset_df with new start and stop
+    subset_df <- df %>%
+        filter(chr == !!chr, pos >= new_start, pos <= new_stop)
+    
+    start_mb <- new_start / 1e6
+    stop_mb <- new_stop / 1e6
+    
+    subset_df$pos_mb <- subset_df$pos / 1e6
+    
+    # Calculate axis breaks
+    breaks <- pretty(c(start_mb, stop_mb), n = 5)
+    
+    p <- ggplot(subset_df, aes(x = pos_mb, y = Wald_log10p)) +
+        geom_line(color = uc_blue) +
+        scale_x_continuous(limits = c(start_mb, stop_mb),
+                           breaks = breaks,
+                           labels = function(x) sprintf("%.3f", x),
+                           expand = c(0, 0)) +
+        labs(title = paste("Zoomed Region plot for Wald_log10p on", chr),
+             x = "Genomic Position (Mb)",
+             y = "Wald_log10p") +
+        theme_bw() +
+        theme(
+            panel.grid.minor = element_blank(),
+            axis.text.x = element_text(margin = margin(t = 3)),
+            axis.ticks.length = unit(0.2, "cm")
+        )
+    
+    # Return a list containing chr, new_start, new_stop, and the plot
+    return(list(chr = chr, start = new_start, stop = new_stop, plot = p))
+}

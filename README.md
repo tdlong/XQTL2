@@ -313,6 +313,15 @@ A1 = XQTL_region(df1, "chr2L", 12030000, 12070000, "Wald_log10p")
 A2 = XQTL_change_average(df2, "chr2L", 12030000, 12070000)
 A3 = XQTL_genes(gtf, "chr2L", 12030000, 12070000)
 A1/A2/A3
+# a fast way to explore peaks
+# find the peak score in this window, return a plot and a new interval
+# the last two argument are the left and right -log10p drop on each side of the peak
+out = XQTL_zoom(df1, "chr2L", 15000000, 16000000, 3, 3)
+out$plot  # perhaps adjust left and right drops until you are happy
+A1 = XQTL_region(df1, out$chr, out$start, out$stop, "Wald_log10p")
+A2 = XQTL_change_average(df2, out$chr, out$start, out$stop)
+A3 = XQTL_genes(gtf, out$chr, out$start, out$stop)
+A1/A3/A2
 
 ```
 

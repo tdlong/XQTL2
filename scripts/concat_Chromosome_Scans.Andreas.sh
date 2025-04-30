@@ -1,3 +1,4 @@
+#!/bin/bash
 module load R/4.2.2
 mydir=$1
 name=$(basename $mydir)
