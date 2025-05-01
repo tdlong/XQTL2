@@ -161,63 +161,89 @@ get_palette <- function(founders, reference_strain = NULL) {
   return(palette)
 }
 
-XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL) {
-  # Subset the dataframe
-  subset_df <- df %>% filter(chr == !!chr, pos >= start, pos <= stop)
-  
-  # Pivot the dataframe to wide format and calculate Dfreq
-  wide_df <- subset_df %>% 
-    pivot_wider(names_from = TRT, values_from = freq, names_prefix = "freq_") %>% 
-    mutate(Dfreq = freq_Z - freq_C)
-  
-  # Calculate average Dfreq over REP
-  avg_df <- wide_df %>% 
-    group_by(chr, pos, founder) %>% 
-    summarize(Dfreq = mean(Dfreq, na.rm = TRUE), .groups = "drop")
-  
-  # Get the color palette
-  color_palette <- get_palette(unique(avg_df$founder), reference_strain)
-  
-  # Convert start, stop, and positions to Mb
-  start_mb <- start / 1e6
-  stop_mb <- stop / 1e6
-  avg_df$pos_mb <- avg_df$pos / 1e6
-  
-  # Calculate axis breaks
-  breaks <- pretty(c(start_mb, stop_mb), n = 5)
-  
-  # Create the plot
-  p <- ggplot(avg_df, aes(x = pos_mb, y = Dfreq, color = founder)) + 
-    geom_line() +
-    scale_x_continuous(limits = c(start_mb, stop_mb),
-                       breaks = breaks,
-                       labels = function(x) sprintf("%.3f", x),
-                       expand = c(0, 0)) +
-    labs(title = paste("Average Frequency Change by Position (", chr, ")"),
-         x = "Genomic Position (Mb)", 
-         y = "Δ Frequency (Z - C)") + 
-    theme_bw() +
-    theme(panel.grid.minor = element_blank()) +
-    scale_color_manual(values = color_palette) +
-    theme(
-      legend.position = "bottom",
-      legend.title = element_blank(),
-      legend.box = "horizontal",
-      legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
-      legend.spacing.x = unit(0.2, 'cm'),
-      legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),
-      plot.margin = margin(t = 10, r = 10, b = 20, l = 10, unit = "pt"),
-      axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
-      axis.text.x = element_text(margin = margin(t = 3)),
-      axis.ticks.length = unit(0.2, "cm")
-    ) +
-    guides(color = guide_legend(
-      override.aes = list(linewidth = 3),
-      nrow = 1
-    ))
-  
-  return(p)
+XQTL_change_average <- function(df, chr, start, stop, reference_strain = NULL, filter_low_freq_founders = TRUE) {
+    # Subset the dataframe
+    subset_df <- df %>% filter(chr == !!chr, pos >= start, pos <= stop)
+
+    # Pivot the dataframe to wide format and calculate Dfreq
+    wide_df <- subset_df %>%
+        pivot_wider(names_from = TRT, values_from = freq, names_prefix = "freq_") %>%
+        mutate(Dfreq = freq_Z - freq_C)
+
+    # Calculate average Dfreq over REP and average freq_C
+    avg_df <- wide_df %>%
+        group_by(chr, pos, founder) %>%
+        summarize(Dfreq = mean(Dfreq, na.rm = TRUE),
+                  avg_freq_C = mean(freq_C, na.rm = TRUE),
+                  .groups = "drop")
+
+    # Calculate overall average freq_C for each founder
+    founder_avg_freq_C <- avg_df %>%
+        group_by(founder) %>%
+        summarize(overall_avg_freq_C = mean(avg_freq_C, na.rm = TRUE),
+                  .groups = "drop")
+
+    # Join the overall average back to avg_df
+    avg_df <- avg_df %>%
+        left_join(founder_avg_freq_C, by = "founder") %>%
+        mutate(color_alpha = if(filter_low_freq_founders) {
+            ifelse(overall_avg_freq_C < 0.025, 0.3, 1)
+        } else {
+            1
+        })
+
+    # Get the color palette
+    color_palette <- get_palette(unique(avg_df$founder), reference_strain)
+
+    # Modify color palette to include alpha
+    color_palette_with_alpha <- sapply(names(color_palette), function(founder) {
+        color <- color_palette[founder]
+        alpha_value <- unique(avg_df$color_alpha[avg_df$founder == founder])
+        adjustcolor(color, alpha.f = alpha_value)
+    })
+    names(color_palette_with_alpha) <- names(color_palette)
+
+    # Convert start, stop, and positions to Mb
+    start_mb <- start / 1e6
+    stop_mb <- stop / 1e6
+    avg_df$pos_mb <- avg_df$pos / 1e6
+
+    # Calculate axis breaks
+    breaks <- pretty(c(start_mb, stop_mb), n = 5)
+
+    # Create the plot
+    p <- ggplot(avg_df, aes(x = pos_mb, y = Dfreq, color = founder)) +
+        geom_line(size = 1) +
+        scale_x_continuous(limits = c(start_mb, stop_mb),
+                           breaks = breaks,
+                           labels = function(x) sprintf("%.3f", x),
+                           expand = c(0, 0)) +
+        labs(title = paste("Average Frequency Change by Position (", chr, ")"),
+             x = "Genomic Position (Mb)",
+             y = "Δ Frequency (Z - C)") +
+        theme_bw() +
+        theme(panel.grid.minor = element_blank()) +
+        scale_color_manual(values = color_palette_with_alpha) +
+        theme(
+            legend.position = "bottom",
+            legend.title = element_blank(),
+            legend.box = "horizontal",
+            legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+            legend.spacing.x = unit(0.2, 'cm'),
+            legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),
+            plot.margin = margin(t = 10, r = 10, b = 20, l = 10, unit = "pt"),
+            axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+            axis.text.x = element_text(margin = margin(t = 3)),
+            axis.ticks.length = unit(0.2, "cm")
+        ) +
+        guides(color = guide_legend(
+            override.aes = list(linewidth = 3),
+            nrow = 1
+        ))
+
+    return(p)
 }
+
 
 
 XQTL_change_byRep <- function(df, chr, start, stop) {
