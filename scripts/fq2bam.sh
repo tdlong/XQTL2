@@ -6,7 +6,7 @@
 
 module load bwa/0.7.17
 module load samtools/1.10
-module load bcftools/1.10.2
+module load bcftools/1.21
 module load java/17 
 module load picard-tools/1.87
 

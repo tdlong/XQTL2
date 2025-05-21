@@ -8,7 +8,7 @@
 
 module load bwa/0.7.17
 module load samtools/1.10
-module load bcftools/1.10.2
+module load bcftools/1.21
 
 ref="ref/dm6.fa"
 # passed from command line
