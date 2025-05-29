@@ -22,5 +22,5 @@ bcftools mpileup -I -d 1000 -t $mychr -a "FORMAT/AD,FORMAT/DP" -f $ref -b $bams 
 echo -ne "CHROM\tPOS" > ${output}/RefAlt.$mychr.txt
 bcftools query -l ${output}/calls.$mychr.bcf | awk '{printf("\tREF_%s\tALT_%s",$1,$1)}' >> ${output}/RefAlt.$mychr.txt
 echo -ne "\n" >> ${output}/RefAlt.$mychr.txt
-bcftools view -m2 -M2 -v snps -i 'QUAL>20' ${output}/calls.$mychr.bcf | bcftools query -e'GT ="./."'  -e'QUAL<60' -f'%CHROM %POS [ %AD{0} %AD{1}] [%GT]\n' | grep -v '\.' | awk 'NF-=1' >>${output}/RefAlt.$mychr.txt
+bcftools view -m2 -M2 -v snps -i 'QUAL>20' ${output}/calls.$mychr.bcf | bcftools query -e'GT="./." || QUAL<60' -f'%CHROM %POS [ %AD{0} %AD{1}] [%GT]\n' | grep -v '\.' | awk 'NF-=1' >>${output}/RefAlt.$mychr.txt
 
