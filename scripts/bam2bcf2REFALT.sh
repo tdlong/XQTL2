@@ -6,8 +6,6 @@
 #SBATCH --array=1-5
 #SBATCH --time=5-00:00:00
 
-module load bwa/0.7.17
-module load samtools/1.10
 module load bcftools/1.21
 
 ref="ref/dm6.fa"
