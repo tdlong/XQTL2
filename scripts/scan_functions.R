@@ -118,8 +118,10 @@ pseudoN.test = function(p1,p2,covar1,covar2,nrepl,N1,N2){
 				TRT = c(rep(1,nF*nrepl),rep(2,nF*nrepl)),
 				REP = c(rep(1:nrepl,each=nF),rep(1:nrepl,each=nF)))
 			D.x = xtabs(Count ~ founder + TRT + REP, data = tdf)
-			out = mantelhaen.test(D.x,correct=TRUE)
+			out = tryCatch(mantelhaen.test(D.x,correct=TRUE),
+				error=function(e) NULL)
 			}
+		if(is.null(out)){ return(NA) }
 		log10p = -log10(out$p.value)
 		}
 	log10p
