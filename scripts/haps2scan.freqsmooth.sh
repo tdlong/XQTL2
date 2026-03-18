@@ -10,9 +10,10 @@ module load R/4.2.2
 Rfile=$1
 mydir=$2
 myoutdir=$3
-FREQ_SMOOTH_HALF=$4
+COV_SMOOTH_KB=$4    # covariance smoothing half-window in kb (e.g. 125; 0 = off)
+FREQ_SMOOTH_KB=$5   # frequency smoothing half-window in kb  (e.g. 125; 0 = off)
 
 declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
 
-Rscript scripts/haps2scan.freqsmooth.R $mychr $Rfile $mydir $myoutdir $FREQ_SMOOTH_HALF
+Rscript scripts/haps2scan.freqsmooth.R $mychr $Rfile $mydir $myoutdir $COV_SMOOTH_KB $FREQ_SMOOTH_KB

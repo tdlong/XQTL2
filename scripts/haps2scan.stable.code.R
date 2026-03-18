@@ -5,7 +5,7 @@
 # regularization.  Drop-in replacement for haps2scan.Apr2025.code.R.
 #
 # Changes from Apr2025:
-#   1. Pooled covariance matrices are smoothed across ±SMOOTH_HALF windows
+#   1. Pooled covariance matrices are smoothed across a ±COV_SMOOTH_KB half-window
 #   2. Eigenvalues are floored at RIDGE_FRACTION * mean(eigenvalue)
 #   3. Frequencies (means) are NOT smoothed
 #   4. Pseu_log10p and Heritability computed from raw (unsmoothed) data
@@ -14,12 +14,12 @@
 ###############################################################################
 
 # ── Tuning parameters ────────────────────────────────────────────────────────
-SMOOTH_HALF    <- 50     # ±50 windows = 101-point running mean (~±250 kb)
 RIDGE_FRACTION <- 0.01   # Floor eigenvalues at 1% of mean eigenvalue
-# FREQ_SMOOTH_HALF: smooth haplotype frequency vectors across windows before
-# computing the Wald test.  0 = no frequency smoothing (current behavior).
-# Set by the driver .R file (e.g. haps2scan.freqsmooth.R); defaults to 0.
-if (!exists("FREQ_SMOOTH_HALF")) FREQ_SMOOTH_HALF <- 0L
+
+# COV_SMOOTH_KB and FREQ_SMOOTH_KB are set by the driver .R file in kb.
+# 0 = no smoothing.  Window counts are derived from actual data spacing below.
+if (!exists("COV_SMOOTH_KB"))  COV_SMOOTH_KB  <- 0L
+if (!exists("FREQ_SMOOTH_KB")) FREQ_SMOOTH_KB <- 0L
 
 # ── Helper: edge-aware running mean (vectorized, O(n)) ──────────────────────
 running_mean <- function(x, half_window) {
@@ -160,6 +160,13 @@ windows <- xx1 %>%
 W <- nrow(windows)
 cat(sprintf("  %d windows on %s\n", W, mychr))
 
+# Derive window step size from data; convert kb smoothing distances to window counts
+step_kb  <- median(diff(sort(unique(windows$pos)))) / 1000
+COV_HALF  <- if (COV_SMOOTH_KB  > 0) round(COV_SMOOTH_KB  / step_kb) else 0L
+FREQ_HALF <- if (FREQ_SMOOTH_KB > 0) round(FREQ_SMOOTH_KB / step_kb) else 0L
+cat(sprintf("  Window step: %.1f kb | Cov smooth: %d kb | Freq smooth: %d kb\n",
+            step_kb, COV_SMOOTH_KB, FREQ_SMOOTH_KB))
+
 # ── Step 2: Extract per-window data ──────────────────────────────────────────
 cat("Step 2: Extracting window data...\n")
 window_data <- map2(windows$data, windows$CHROM,
@@ -172,8 +179,8 @@ cat("Step 3: Pooling replicates...\n")
 pooled <- map(window_data, pool_one_window)
 
 # ── Step 4: Stack pooled covariances into 3D arrays ─────────────────────────
-cat(sprintf("Step 4: Smoothing covariance matrices (+/-%d windows)...\n",
-            SMOOTH_HALF))
+cat(sprintf("Step 4: Smoothing covariance matrices (+/-%d kb)...\n",
+            COV_SMOOTH_KB))
 nF <- Nfounders
 
 covar1_stack <- array(NA_real_, c(nF, nF, W))
@@ -194,28 +201,27 @@ covar2_smooth <- array(NA_real_, c(nF, nF, W))
 
 for (i in 1:nF) {
   for (j in 1:nF) {
-    covar1_smooth[i,j,] <- running_mean(covar1_stack[i,j,], SMOOTH_HALF)
-    covar2_smooth[i,j,] <- running_mean(covar2_stack[i,j,], SMOOTH_HALF)
+    covar1_smooth[i,j,] <- running_mean(covar1_stack[i,j,], COV_HALF)
+    covar2_smooth[i,j,] <- running_mean(covar2_stack[i,j,], COV_HALF)
   }
 }
 
 # ── Step 4b: Smooth haplotype frequency vectors (optional) ───────────────────
 # A running mean of simplex vectors is simplex-preserving (convex combination).
-# FREQ_SMOOTH_HALF=0 skips this step entirely (backward compatible).
+# FREQ_SMOOTH_KB=0 skips this step entirely.
 # When active, also fills gaps at originally-invalid windows: after smoothing,
 # those windows have valid interpolated frequencies from neighbors, so we extend
 # the Wald computation to all windows with non-NA smoothed data.
-if (FREQ_SMOOTH_HALF > 0L) {
-  cat(sprintf("Step 4b: Smoothing frequency vectors (+/-%d windows = +/-%d kb)...\n",
-              FREQ_SMOOTH_HALF, FREQ_SMOOTH_HALF * 5))
+if (FREQ_HALF > 0L) {
+  cat(sprintf("Step 4b: Smoothing frequency vectors (+/-%d kb)...\n", FREQ_SMOOTH_KB))
   for (f in seq_len(nF)) {
-    p1_vec[, f] <- running_mean(p1_vec[, f], FREQ_SMOOTH_HALF)
-    p2_vec[, f] <- running_mean(p2_vec[, f], FREQ_SMOOTH_HALF)
+    p1_vec[, f] <- running_mean(p1_vec[, f], FREQ_HALF)
+    p2_vec[, f] <- running_mean(p2_vec[, f], FREQ_HALF)
   }
   # Any window with non-NA smoothed frequencies and covariances can get a Wald score
   smoothed_valid <- !is.na(p1_vec[, 1]) & !is.na(p2_vec[, 1]) &
                     !is.na(covar1_smooth[1, 1, ]) & !is.na(covar2_smooth[1, 1, ])
-  cat(sprintf("  Wald-eligible windows after smoothing: %d (was %d valid raw)\n",
+  cat(sprintf("  Wald-eligible windows after freq smoothing: %d (was %d valid raw)\n",
               sum(smoothed_valid), sum(valid)))
 } else {
   smoothed_valid <- valid
@@ -249,7 +255,7 @@ for (w in which(valid)) {
   Cutl_H2[w] <- temp$Cutler_H2
 }
 
-# ── Step 7: Assemble pseudoscan output ───────────────────────────────────────
+# ── Step 7: Assemble scan output ─────────────────────────────────────────────
 cat("Step 7: Assembling output...\n")
 bb2 <- tibble(
   chr         = windows$CHROM,

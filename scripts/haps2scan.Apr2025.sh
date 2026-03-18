@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pseudoscan
+#SBATCH --job-name=scan
 #SBATCH -A tdlong_lab        ## account to charge 
 #SBATCH -p standard          ## partition/queue name
 #SBATCH --cpus-per-task=1 

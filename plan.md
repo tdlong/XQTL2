@@ -146,14 +146,13 @@ Then concatenate and plot following the pattern in `scripts_oneoffs/run_all_scan
 ## Implementation Order
 
 - [x] 1. Cleanup, gitignore, track stable/freqsmooth scripts
-- [ ] 2. `haps2scan.freqsmooth.sh` — add `COV_SMOOTH_KB` as arg5, shift `FREQ_SMOOTH_KB` to arg6
-- [ ] 3. `haps2scan.freqsmooth.R` — read both kb args, set globals before sourcing `.code.R`
-- [ ] 4. `haps2scan.stable.code.R` — remove hardcoded values; compute step size from data; use `COV_HALF`/`FREQ_HALF` internally
-- [ ] 5. Rename `pseudoscan` → `scan` in output filenames (both `.code.R` files)
-- [ ] 6. Delete `haps2scan.stable.sh` (redundant)
-- [ ] 7. Add/track example plotting template in `configs/`
-- [ ] 8. Update `README.md`
-- [ ] 9. Push; pull on cluster and test
+- [x] 2. `haps2scan.freqsmooth.sh` — add `COV_SMOOTH_KB` as arg4, `FREQ_SMOOTH_KB` as arg5
+- [x] 3. `haps2scan.freqsmooth.R` — read both kb args, set globals before sourcing `.code.R`
+- [x] 4. `haps2scan.stable.code.R` — remove hardcoded values; compute step size from data; use `COV_HALF`/`FREQ_HALF` internally
+- [x] 5. Rename `pseudoscan` → `scan` in all output filenames and job names
+- [x] 6. Delete `haps2scan.stable.sh` (redundant); rename concat scripts (drop `Andreas`)
+- [x] 7. Update `README.md`
+- [ ] 8. Push; pull on cluster and test
 
 ---
 

@@ -11,7 +11,7 @@ data_path = as.character(args[1])
 name = basename(data_path)
 
 # merge scan
-files = dir(data_path, pattern = paste0(name,".pseudoscan.*.txt")) # get file names
+files = dir(data_path, pattern = paste0(name,".scan.*.txt")) # get file names
 files = grep("chr",files,value=TRUE)
 df1 = files %>%
   # read in all the files, appending the path before the filename
@@ -29,7 +29,7 @@ df1 = files %>%
   ) %>%
   ungroup()
 
-write.table(df1,paste0(data_path, "/",name,".pseudoscan.txt"))
+write.table(df1,paste0(data_path, "/",name,".scan.txt"))
 
 # merge means
 files = dir(data_path, pattern = paste0(name,".meansBySample.*.txt")) # get file names
