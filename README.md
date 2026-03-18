@@ -392,6 +392,85 @@ A1 / A2 / A3
 
 ---
 
+## Putting it all together
+
+For a new experiment, copy the block below to
+`scripts_oneoffs/<project_name>_pipeline.sh`, fill in the variables at the top,
+and run it from the project root. Each step is submitted as a SLURM job with
+`afterok` dependencies so the whole pipeline runs unattended.
+
+```bash
+#!/bin/bash
+# Edit these variables, then: bash scripts_oneoffs/<project_name>_pipeline.sh
+
+PROJECT=<project_name>
+BARCODES=helpfiles/${PROJECT}/${PROJECT}.barcodes.txt
+PARFILE=helpfiles/${PROJECT}/hap_params.R
+COV_KB=125
+FREQ_KB=125
+
+# One entry per scan (sex, treatment, etc.) — add or remove as needed
+DESIGNS=(  helpfiles/${PROJECT}/design_male.txt   helpfiles/${PROJECT}/design_female.txt )
+OUTDIRS=(  ${PROJECT}_M_smooth${COV_KB}           ${PROJECT}_F_smooth${COV_KB}           )
+
+# Figure scripts that run after all scans are concatenated
+FIGURES=(  helpfiles/${PROJECT}/${PROJECT}_MF_smooth${COV_KB}.R )
+
+# ── Step 2: align reads ───────────────────────────────────────────────────────
+NN=$(wc -l < ${BARCODES})
+mkdir -p data/bam/${PROJECT}
+jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
+    ${BARCODES} data/raw/${PROJECT} data/bam/${PROJECT})
+echo "fq2bam:      $jid_bam"
+
+# ── Step 3: REFALT counts ─────────────────────────────────────────────────────
+mkdir -p process/${PROJECT}
+find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bams
+cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
+
+jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
+    --array=1-5 scripts/bam2bcf2REFALT.sh \
+    helpfiles/${PROJECT}/bams process/${PROJECT})
+echo "REFALT:      $jid_refalt"
+
+# ── Step 4: haplotypes ────────────────────────────────────────────────────────
+jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
+    --array=1-5 scripts/REFALT2haps.sh \
+    --parfile ${PARFILE} --dir process/${PROJECT})
+echo "haps:        $jid_haps"
+
+# ── Steps 5-6: scans + concat (one pair per design, all share same haps) ─────
+jid_concats=""
+for i in "${!DESIGNS[@]}"; do
+    design=${DESIGNS[$i]}
+    outdir=${OUTDIRS[$i]}
+
+    jid_scan=$(sbatch --parsable --dependency=afterok:${jid_haps} \
+        --array=1-5 scripts/haps2scan.freqsmooth.sh \
+        --rfile ${design} --dir process/${PROJECT} --outdir ${outdir} \
+        --cov-smooth-kb ${COV_KB} --freq-smooth-kb ${FREQ_KB})
+    echo "scan ${outdir}: $jid_scan"
+
+    jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan} \
+        -A tdlong_lab -p standard --mem=10G \
+        --wrap="bash scripts/concat_Chromosome_Scans.sh process/${PROJECT}/${outdir}")
+    echo "concat ${outdir}: $jid_concat"
+
+    jid_concats="${jid_concats}:${jid_concat}"
+done
+
+# ── Step 7: figures (after all concats finish) ────────────────────────────────
+dep="afterok${jid_concats}"
+for fig in "${FIGURES[@]}"; do
+    jid_fig=$(sbatch --parsable --dependency=${dep} \
+        -A tdlong_lab -p standard --mem=10G \
+        --wrap="module load R/4.2.2 && Rscript ${fig}")
+    echo "figure ${fig}: $jid_fig"
+done
+```
+
+---
+
 ## Directory structure
 
 ```
