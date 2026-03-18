@@ -25,7 +25,7 @@ download script:
 cat links.txt | grep http | cut -f1 -d' ' | awk '{printf("wget %s\n",$0)}' > get_data.sh
 ```
 
-Add a SLURM header to `get_data.sh` and submit. Store raw reads under `data/raw/`.
+Add a SLURM header to `get_data.sh` and submit. Store raw reads under `data/raw/<project_name>/`.
 
 ---
 
@@ -50,17 +50,17 @@ ACTTGCCA    TTGTCAGC    R5con
 TCTTCGTG    TTGTCAGC    R5age
 ```
 
-Save this file to `helpfiles/` (e.g. `helpfiles/<experiment>.barcodes.txt`).
+Save this file to `helpfiles/` (e.g. `helpfiles/<project_name>/<project_name>.barcodes.txt`).
 
 ### Run alignment
 
 ```bash
-mkdir -p data/bam/<experiment>
-NN=$(wc -l < helpfiles/<experiment>.barcodes.txt)
+mkdir -p data/bam/<project_name>
+NN=$(wc -l < helpfiles/<project_name>/<project_name>.barcodes.txt)
 sbatch --array=1-$NN scripts/fq2bam.sh \
-    helpfiles/<experiment>.barcodes.txt \
-    data/raw/<experiment> \
-    data/bam/<experiment>
+    helpfiles/<project_name>/<project_name>.barcodes.txt \
+    data/raw/<project_name> \
+    data/bam/<project_name>
 ```
 
 Bam files below ~1 GB likely indicate a failed library prep and should be reprocessed.
@@ -73,13 +73,13 @@ Create a file listing all bam paths for your experiment (pooled samples + founde
 Founders are pre-aligned; paths to the shared founder bams are in `helpfiles/founder.bams.txt`.
 
 ```bash
-mkdir -p process/<experiment>
-find data/bam/<experiment> -name "*.bam" -size +1G > helpfiles/<experiment>.bams
-cat helpfiles/founder.bams.txt >> helpfiles/<experiment>.bams
+mkdir -p process/<project_name>
+find data/bam/<project_name> -name "*.bam" -size +1G > helpfiles/<project_name>/bams
+cat helpfiles/founder.bams.txt >> helpfiles/<project_name>/bams
 
 sbatch scripts/bam2bcf2REFALT.sh \
-    helpfiles/<experiment>.bams \
-    process/<experiment>
+    helpfiles/<project_name>/bams \
+    process/<project_name>
 ```
 
 ---
@@ -88,7 +88,7 @@ sbatch scripts/bam2bcf2REFALT.sh \
 
 ### Haplotype parameters file
 
-Create a parameter file for your experiment (e.g. `helpfiles/<experiment>.hap_params.R`).
+Create a parameter file for your experiment (e.g. `helpfiles/<project_name>/hap_params.R`).
 This is an R script that is `source()`d by the pipeline. Required variables:
 
 ```r
@@ -116,7 +116,7 @@ h_cutoff <- 2.5
 To generate `names_in_bam` from your bam directory:
 ```bash
 echo -n "names_in_bam <- c(" && \
-find data/bam/<experiment> -name "*.bam" -size +1G -print0 | \
+find data/bam/<project_name> -name "*.bam" -size +1G -print0 | \
 xargs -0 -n1 basename | sed 's/.bam//' | sort | \
 sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//' && echo ")"
 ```
@@ -124,9 +124,9 @@ sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//' && echo ")"
 ### Run haplotype calling
 
 ```bash
-sbatch --array=1-5 scripts/REFALT2haps.Andreas.sh \
-    --parfile helpfiles/<experiment>.hap_params.R \
-    --dir     process/<experiment>
+sbatch --array=1-5 scripts/REFALT2haps.sh \
+    --parfile helpfiles/<project_name>/hap_params.R \
+    --dir     process/<project_name>
 ```
 
 ---
@@ -159,15 +159,15 @@ design <- data.frame(
     Num        = c(1205,115,1387,296,1631,174),
     Proportion = c(NA,0.087,NA,0.154,NA,0.088)
 )
-write.table(design, "helpfiles/<experiment>.design.txt")
+write.table(design, "helpfiles/<project_name>/design.txt")
 ```
 
 ### Legacy scan (no smoothing)
 
 ```bash
 sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
-    --rfile  helpfiles/<experiment>.design.txt \
-    --dir    process/<experiment> \
+    --rfile  helpfiles/<project_name>/design.txt \
+    --dir    process/<project_name> \
     --outdir <scan_name>
 ```
 
@@ -175,8 +175,8 @@ sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
 
 ```bash
 sbatch --array=1-5 scripts/haps2scan.freqsmooth.sh \
-    --rfile          helpfiles/<experiment>.design.txt \
-    --dir            process/<experiment> \
+    --rfile          helpfiles/<project_name>/design.txt \
+    --dir            process/<project_name> \
     --outdir         <scan_name> \
     --cov-smooth-kb  125 \
     --freq-smooth-kb 125
@@ -188,7 +188,7 @@ The smooth scan also applies eigenvalue regularization to stabilize the Wald tes
 Window counts are derived automatically from the actual data spacing in the haps file —
 you always specify distances in kb.
 
-The output directory `<scan_name>` is created inside `process/<experiment>/`. Choose a
+The output directory `<scan_name>` is created inside `process/<project_name>/`. Choose a
 name that reflects the analysis (e.g. `ZINC2_F_smooth125`).
 
 ---
@@ -198,7 +198,7 @@ name that reflects the analysis (e.g. `ZINC2_F_smooth125`).
 Once all five chromosome jobs finish:
 
 ```bash
-bash scripts/concat_Chromosome_Scans.sh process/<experiment>/<scan_name>
+bash scripts/concat_Chromosome_Scans.sh process/<project_name>/<scan_name>
 ```
 
 This merges the per-chromosome scan files, applies a light sliding-window smooth to
@@ -220,9 +220,9 @@ the summary statistics, and generates three figures:
 Copy the summary files to your local machine:
 
 ```bash
-scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.scan.txt .
-scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.meansBySample.txt .
-scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.5panel.cM.png .
+scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.scan.txt .
+scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.meansBySample.txt .
+scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.5panel.cM.png .
 ```
 
 ---

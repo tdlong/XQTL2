@@ -23,4 +23,4 @@ done
 declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
 
-Rscript scripts/REFALT2haps.Andreas.R $mychr $parfile $mydir
+Rscript scripts/REFALT2haps.R $mychr $parfile $mydir
