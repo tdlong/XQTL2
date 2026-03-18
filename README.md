@@ -246,21 +246,20 @@ the summary statistics, and generates three figures:
 ## Step 7 — Generate publication figures (smooth scan only)
 
 The smooth scan has a dedicated plotting script (`scripts/plot_pseudoscan.R`) that
-produces cleaner figures suitable for presentations and manuscripts. It is driven by
-a small config file you create per experiment, stored alongside the other
-experiment-specific files in `helpfiles/<project_name>/`.
+produces cleaner figures suitable for presentations and manuscripts. Each figure is
+driven by a small R script stored in `helpfiles/<project_name>/`. Name the script
+after the figure it produces — the `.R` and `.png` share a base name.
 
-### Create a config file
+### Create a figure script
 
-Save a file to `helpfiles/<project_name>/plot_config.R`. The simplest case — a
-single scan:
+`helpfiles/<project_name>/<figure_name>.R` — single scan example:
 
 ```r
 SCAN_FILES   <- c("process/<project_name>/<scan_name>/<scan_name>.scan.txt")
 SCAN_COLOURS <- c("#1F78B4")
 SCAN_LABELS  <- NULL       # NULL uses the scan file basename as the label
 THRESHOLD    <- 10         # dashed line at this Wald -log10(p)
-OUT_FILE     <- "process/<project_name>/<scan_name>/<scan_name>.png"
+OUT_FILE     <- "process/<project_name>/<scan_name>/<figure_name>.png"
 FORMAT       <- "powerpoint"
 PEAKS        <- NULL
 GENES        <- NULL
@@ -268,17 +267,17 @@ GENES        <- NULL
 source("scripts/plot_pseudoscan.R")
 ```
 
-To overlay two scans (e.g. males and females) in one plot, extend the vectors:
+`helpfiles/<project_name>/<figure_name>.R` — two-scan overlay (e.g. males and females):
 
 ```r
 SCAN_FILES <- c(
     "process/<project_name>/<scan_name_M>/<scan_name_M>.scan.txt",
     "process/<project_name>/<scan_name_F>/<scan_name_F>.scan.txt"
 )
-SCAN_COLOURS <- c("#1F78B4", "#E31A1C")   # one colour per scan
+SCAN_COLOURS <- c("#1F78B4", "#E31A1C")
 SCAN_LABELS  <- c("Male", "Female")
 THRESHOLD    <- 10
-OUT_FILE     <- "process/<project_name>/<scan_name_M>_vs_F.png"
+OUT_FILE     <- "process/<project_name>/<figure_name>.png"
 FORMAT       <- "powerpoint"
 PEAKS        <- NULL
 GENES        <- NULL
@@ -289,7 +288,7 @@ source("scripts/plot_pseudoscan.R")
 Height is calculated automatically (1.4 in per chromosome). Override with
 `OUT_HEIGHT_IN <- 9.0` if needed.
 
-To annotate genes and peaks — both use Mb coordinates:
+Gene and peak annotations both use Mb coordinates:
 
 ```r
 GENES <- data.frame(
@@ -316,23 +315,33 @@ PEAKS <- data.frame(
 | `web` | 7.0 in | 150 | web/HTML |
 | `email` | 6.0 in | 100 | email preview |
 
-### Run the config
+### Run the figure script
 
 ```bash
-Rscript helpfiles/<project_name>/plot_config.R
+Rscript helpfiles/<project_name>/<figure_name>.R
 ```
 
 ---
 
 ## Step 8 — Download and explore results
 
-Copy the summary files to your local machine:
+The concat step (Step 6) bundles the scan table, means table, and summary figures
+into a single tarball. Download it in one shot:
 
 ```bash
-scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.scan.txt .
-scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.meansBySample.txt .
-scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.5panel.cM.png .
+scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_name>.tar.gz .
+tar -xzf <scan_name>.tar.gz
 ```
+
+The tarball contains:
+
+| File | Description |
+|------|-------------|
+| `<scan_name>.scan.txt` | Full genome scan table |
+| `<scan_name>.meansBySample.txt` | Per-founder frequency table |
+| `<scan_name>.5panel.Mb.png` | 5-panel Manhattan (physical position) |
+| `<scan_name>.5panel.cM.png` | 5-panel Manhattan (genetic position) |
+| `<scan_name>.Manhattan.png` | Combined Manhattan plot |
 
 ---
 
@@ -397,7 +406,7 @@ XQTL2/
 │       ├── bams                              (Step 3)
 │       ├── hap_params.R                      (Step 4)
 │       ├── design.txt                        (Step 5)
-│       └── plot_config.R                     (Step 7)
+│       └── <figure_name>.R                   (Step 7, one per figure)
 ├── data/
 │   ├── raw/<project_name>/                   (Step 1 — raw reads)
 │   └── bam/<project_name>/                   (Step 2 — aligned bams)
