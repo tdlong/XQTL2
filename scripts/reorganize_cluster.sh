@@ -1,7 +1,7 @@
 #!/bin/bash
 # reorganize_cluster.sh
 # Run ONCE from the XQTL2 project root to move experiment-specific files
-# into analysis/ and clean up the root directory.
+# into scripts_oneoffs/ and clean up the root directory.
 # Safe: only moves files, does not delete anything.
 
 set -euo pipefail
@@ -9,12 +9,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "Working in: $ROOT"
-mkdir -p analysis
+mkdir -p scripts_oneoffs
 
 # -----------------------------------------------------------------------
-# Move experiment-specific scripts out of scripts/ -> analysis/
+# Move experiment-specific scripts out of scripts/ -> scripts_oneoffs/
+# (freqsmooth and stable are kept in scripts/ — they will be tracked)
 # -----------------------------------------------------------------------
-ANALYSIS_SCRIPTS=(
+ONEOFF_SCRIPTS=(
     aging.R
     malathion.R
     zinc2.R
@@ -42,23 +43,18 @@ ANALYSIS_SCRIPTS=(
     merge_b3852.sh
     fq2bam_illumina.sh
     malathion_genes.txt
-    haps2scan.freqsmooth.sh
-    haps2scan.freqsmooth.R
-    haps2scan.stable.sh
-    haps2scan.stable.R
-    haps2scan.stable.code.R
 )
 
-for f in "${ANALYSIS_SCRIPTS[@]}"; do
+for f in "${ONEOFF_SCRIPTS[@]}"; do
     src="scripts/$f"
     if [ -f "$src" ]; then
-        echo "  mv $src -> analysis/$f"
-        mv "$src" "analysis/$f"
+        echo "  mv $src -> scripts_oneoffs/$f"
+        mv "$src" "scripts_oneoffs/$f"
     fi
 done
 
 # -----------------------------------------------------------------------
-# Move root-level clutter -> analysis/
+# Move root-level clutter -> scripts_oneoffs/
 # -----------------------------------------------------------------------
 ROOT_CLUTTER=(
     diagnose_scans.out
@@ -72,8 +68,8 @@ ROOT_CLUTTER=(
 
 for f in "${ROOT_CLUTTER[@]}"; do
     if [ -f "$f" ]; then
-        echo "  mv $f -> analysis/$f"
-        mv "$f" "analysis/$f"
+        echo "  mv $f -> scripts_oneoffs/$f"
+        mv "$f" "scripts_oneoffs/$f"
     fi
 done
 
@@ -89,4 +85,4 @@ for f in founders_bam_files.tar AGE_SY.tar .RData .Rhistory; do
 done
 
 echo ""
-echo "Done. Review analysis/ and then run: git status"
+echo "Done. Review scripts_oneoffs/ and then run: git status"

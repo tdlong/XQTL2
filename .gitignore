@@ -22,7 +22,7 @@ data/
 ref/
 figures/
 process/
-analysis/
+scripts_oneoffs/
 
 # temp folder inside scripts
 scripts/temp/

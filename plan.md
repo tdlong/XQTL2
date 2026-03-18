@@ -31,7 +31,7 @@ XQTL2/
 │   ├── haps2scan.sh
 │   └── concat_Chromosome_Scans.R
 │
-├── analysis/         # Experiment-specific scripts (NOT TRACKED — in .gitignore)
+├── scripts_oneoffs/         # Experiment-specific scripts (NOT TRACKED — in .gitignore)
 │   ├── aging.R, malathion.R, zinc2.R, pupation.R
 │   ├── run_*.sh, submit_*.sh
 │   ├── plot_single_scan.R, plot_pseudoscan.R, plot_for_slides.R, etc.
@@ -73,7 +73,7 @@ data/
 ref/
 figures/
 process/
-analysis/
+scripts_oneoffs/
 
 # temp
 scripts/temp/
@@ -85,12 +85,12 @@ scripts/temp/
 
 A script to be run **once** on the cluster to move files into the new layout.
 It will:
-- Create `analysis/` directory
-- Move experiment-specific scripts from `scripts/` → `analysis/`
-- Move root-level run scripts and reports → `analysis/`
+- Create `scripts_oneoffs/` directory
+- Move experiment-specific scripts from `scripts/` → `scripts_oneoffs/`
+- Move root-level run scripts and reports → `scripts_oneoffs/`
 - Leave core tracked scripts untouched
 
-**Files to move from `scripts/` → `analysis/`:**
+**Files to move from `scripts/` → `scripts_oneoffs/`:**
 ```
 aging.R  malathion.R  zinc2.R  pupation.R  pupation.R
 run_all_scans.sh  run_all_scans_125.sh  run_pupation_scan.sh
@@ -104,7 +104,7 @@ find_refalt_files.sh  fix_refalt_b3852.sh  merge_b3852.sh
 fq2bam_illumina.sh  malathion_genes.txt
 ```
 
-**Files to move from root → `analysis/` (or remove):**
+**Files to move from root → `scripts_oneoffs/` (or remove):**
 ```
 diagnose_scans.out  refalt_report.txt  param_report.txt  cluster_report.txt
 run_freqs250_all.sh  run_chr2R_freqsmooth.sh  run_stable_all.sh
@@ -129,8 +129,8 @@ founders_bam_files.tar (115G)  AGE_SY.tar (151M)  .RData  .Rhistory
 |------|--------|------|
 | `haps2scan.Andreas.*` | Tracked, original | Archive → keep for git history, superseded |
 | `haps2scan.Apr2025.*` | Tracked, current best | Becomes new canonical (rename or keep) |
-| `haps2scan.freqsmooth.*` | Untracked (cluster only) | **Review and integrate as smooth option** |
-| `haps2scan.stable.*` | Untracked (cluster only) | **Review — supersedes Apr2025?** |
+| `haps2scan.freqsmooth.*` | Untracked (cluster only) | **Keep in scripts/, track, then integrate smooth option** |
+| `haps2scan.stable.*` | Untracked (cluster only) | **Keep in scripts/, track — supersedes Apr2025?** |
 
 **Action needed before this step:** Share `haps2scan.freqsmooth.R`,
 `haps2scan.stable.R`, and `haps2scan.stable.code.R` so their logic can be
