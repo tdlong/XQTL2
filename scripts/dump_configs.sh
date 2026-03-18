@@ -8,6 +8,8 @@ FILES=(
     configs/aging_125.R
     configs/pupation_125.R
     configs/malathion_125.R
+    scripts_oneoffs/plot_pseudoscan.R
+    scripts/plot_pseudoscan.R
 )
 
 for f in "${FILES[@]}"; do
