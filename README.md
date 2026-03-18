@@ -354,13 +354,41 @@ A1 / A2 / A3
 
 ```
 XQTL2/
-├── scripts/          # Core pipeline scripts (tracked in git)
-├── scripts_oneoffs/  # Experiment-specific submit scripts (not tracked)
-├── configs/          # Per-experiment plot config files (not tracked)
-├── helpfiles/        # Bam lists, barcode maps, parameter files (not tracked except
-│                     #   flymap.r6.txt and founder.bams.txt)
-├── data/             # Raw reads and aligned bams (not tracked)
-├── ref/              # Reference genome (not tracked)
-├── process/          # All pipeline outputs (not tracked)
-└── figures/          # Summary figures (not tracked)
+├── scripts/              # Core pipeline scripts (tracked in git)
+├── scripts_oneoffs/      # Experiment-specific submit scripts (not tracked)
+├── configs/              # Per-experiment plot config files (not tracked)
+├── helpfiles/
+│   ├── flymap.r6.txt                         (tracked)
+│   ├── founder.bams.txt                      (tracked)
+│   └── <project_name>/
+│       ├── <project_name>.barcodes.txt       (Step 2)
+│       ├── bams                              (Step 3)
+│       ├── hap_params.R                      (Step 4)
+│       └── design.txt                        (Step 5)
+├── data/
+│   ├── raw/<project_name>/                   (Step 1 — raw reads)
+│   └── bam/<project_name>/                   (Step 2 — aligned bams)
+├── ref/                  # Reference genome (not tracked)
+├── process/
+│   └── <project_name>/
+│       ├── RefAlt.<chr>.txt                  (Step 3 — allele counts)
+│       ├── calls.<chr>.bcf                   (Step 3 — intermediate)
+│       ├── R.haps.<chr>.rds                  (Step 4 — SNP table)
+│       ├── R.haps.<chr>.out.rds              (Step 4 — haplotype estimates)
+│       └── <scan_name>/                      (one per scan run, Steps 5-6)
+│           ├── <scan_name>.scan.<chr>.txt
+│           ├── <scan_name>.meansBySample.<chr>.txt
+│           ├── <scan_name>.scan.txt          (after concat)
+│           ├── <scan_name>.meansBySample.txt (after concat)
+│           ├── <scan_name>.5panel.Mb.png
+│           ├── <scan_name>.5panel.cM.png
+│           ├── <scan_name>.Manhattan.png
+│           └── <scan_name>.tar.gz
+└── figures/              # Publication figures from configs/*.R (not tracked)
+```
+
+To check what exists for a given project on the cluster:
+
+```bash
+bash scripts/show_project_layout.sh <project_name>
 ```
