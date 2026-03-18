@@ -4,10 +4,10 @@
 
 This pipeline takes pooled-sequencing XQTL data from raw reads to genome scans and summary figures. Two scan pipelines are available:
 
-- **Pipeline 1** (`haps2scan.Apr2025`) — raw scan, no smoothing
-- **Pipeline 2** (`haps2scan.freqsmooth`) — stabilized scan with covariance and frequency smoothing (recommended for final analyses)
+- **Legacy scan** (`haps2scan.Apr2025`) — raw scan, no smoothing
+- **Smooth scan** (`haps2scan.freqsmooth`) — stabilized scan with covariance and frequency smoothing (recommended for final analyses)
 
-Both pipelines share the same upstream steps (alignment, REFALT counts, haplotype calling) and the same downstream concat/plot step.
+Both share the same upstream steps (alignment, REFALT counts, haplotype calling) and the same downstream concat/plot step.
 
 ---
 
@@ -98,14 +98,14 @@ STV2_F_Con  C    2    1       1387  NA
 STV2_F_Res  Z    2    1       296   0.1540
 ```
 
-### Pipeline 1 — Raw scan (no smoothing)
+### Legacy scan (no smoothing)
 
 ```bash
 sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
     helpfiles/mydesign.txt process/Oct28_24 SCAN_NAME
 ```
 
-### Pipeline 2 — Stabilized scan with smoothing (recommended)
+### Smooth scan (recommended)
 
 ```bash
 # COV_SMOOTH_KB:  covariance smoothing half-window in kb (0 = off; 125 recommended)
