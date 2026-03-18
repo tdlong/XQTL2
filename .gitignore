@@ -1,2 +1,28 @@
 slurm*
 process.Dec6/
+
+# large data/archives
+*.tar
+*.tar.gz
+*.bam
+*.bai
+*.rds
+*.RDS
+
+# R workspace dumps
+.RData
+.Rhistory
+
+# pipeline output / diagnostic reports
+*.out
+*_report.txt
+
+# directories that are all output or data
+data/
+ref/
+figures/
+process/
+analysis/
+
+# temp folder inside scripts
+scripts/temp/
