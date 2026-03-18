@@ -103,9 +103,15 @@ names_in_bam <- c("R1con","R1age","R2con","R2age","R3con","R3age",
 # 5000 (5 kb) is typical; use 10000 (10 kb) for very large experiments to save runtime.
 step <- 5000
 
-# Half-window size in bp for haplotype inference.
-# Larger windows improve inference quality but reduce localization precision.
-# 50000 (50 kb) is a reasonable default; 25000 works well for high-coverage data.
+# Base half-window size in bp for haplotype inference.
+# The caller uses an adaptive window: this value is the half-window at the
+# chromosomal peak recombination rate. In low-recombination regions the window
+# grows automatically (proportional to max_RR / local_RR) so that each window
+# captures a similar number of informative recombination events regardless of
+# local recombination rate. The polynomials describing recombination rate across
+# dm6 chromosomes are hardcoded in REFALT2haps.code.R.
+# 50000 (50 kb) is a reasonable base; windows in pericentromeric regions will
+# typically be 5–10× larger.
 size <- 50000
 
 # Tree height cutoff: founders closer than this (Euclidean distance across SNPs in
@@ -191,11 +197,33 @@ you always specify distances in kb.
 The output directory `<scan_name>` is created inside `process/<project_name>/`. Choose a
 name that reflects the analysis (e.g. `ZINC2_F_smooth125`).
 
+### Per-chromosome outputs
+
+Both pipelines write the same file layout — one pair of files per chromosome:
+
+```
+process/<project_name>/<scan_name>/
+    <scan_name>.scan.chrX.txt
+    <scan_name>.scan.chr2L.txt
+    <scan_name>.scan.chr2R.txt
+    <scan_name>.scan.chr3L.txt
+    <scan_name>.scan.chr3R.txt
+    <scan_name>.meansBySample.chrX.txt
+    <scan_name>.meansBySample.chr2L.txt
+    <scan_name>.meansBySample.chr2R.txt
+    <scan_name>.meansBySample.chr3L.txt
+    <scan_name>.meansBySample.chr3R.txt
+```
+
+If you run both pipelines on the same experiment (e.g. `ZINC2_F_legacy` and
+`ZINC2_F_smooth125`) they each get their own subdirectory and are concatenated
+independently in Step 6.
+
 ---
 
 ## Step 6 — Concatenate chromosomes and generate summary figures
 
-Once all five chromosome jobs finish:
+Once all five chromosome jobs finish, pass the scan directory as the sole argument:
 
 ```bash
 bash scripts/concat_Chromosome_Scans.sh process/<project_name>/<scan_name>
