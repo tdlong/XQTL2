@@ -215,7 +215,57 @@ the summary statistics, and generates three figures:
 
 ---
 
-## Step 7 — Download and explore results
+## Step 7 — Generate publication figures (smooth scan only)
+
+The smooth scan has a dedicated plotting script (`scripts/plot_pseudoscan.R`) that
+produces cleaner figures suitable for presentations and manuscripts. It is driven by
+a small config file that you create per experiment.
+
+### Create a config file
+
+Save a file to `configs/<project_name>.R` (this directory is not tracked in git):
+
+```r
+SCAN_FILES <- c(
+    "process/<project_name>/<scan_name>/<scan_name>.scan.txt"
+)
+SCAN_LABELS  <- NULL                       # or c("label1") to override legend
+SCAN_COLOURS <- c("#1F78B4")               # one colour per scan file
+THRESHOLD    <- 10                         # dashed line at this Wald -log10p
+OUT_FILE     <- "figures/<project_name>.png"
+FORMAT       <- "powerpoint"               # see FORMAT options below
+OUT_HEIGHT_IN <- 7.0
+PEAKS        <- NULL                       # or data.frame(chr, pos_mb, label)
+GENES        <- NULL                       # or data.frame(name, chr, pos_bp)
+
+source("scripts/plot_pseudoscan.R")
+```
+
+To overlay multiple scans (e.g. male and female) in one plot, add more paths to
+`SCAN_FILES` and matching entries in `SCAN_COLOURS`.
+
+### FORMAT options
+
+| FORMAT | Width | DPI | Use for |
+|--------|-------|-----|---------|
+| `manuscript_half` | 3.5 in | 300 | half-width journal figure |
+| `manuscript_full` | 7.0 in | 300 | full-width journal figure |
+| `manuscript_half_hires` | 3.5 in | 600 | high-res submission |
+| `manuscript_full_hires` | 7.0 in | 600 | high-res submission |
+| `powerpoint` | 8.0 in | 150 | slides |
+| `web` | 7.0 in | 150 | web/HTML |
+| `email` | 6.0 in | 100 | email preview |
+
+### Run the config
+
+```bash
+mkdir -p figures
+Rscript configs/<project_name>.R
+```
+
+---
+
+## Step 8 — Download and explore results
 
 Copy the summary files to your local machine:
 
@@ -227,9 +277,10 @@ scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_nam
 
 ---
 
-## Plotting functions
+## Interactive plotting functions
 
-`scripts/XQTL_plotting_functions.R` provides functions for exploring scan results.
+`scripts/XQTL_plotting_functions.R` provides functions for exploring scan results
+interactively (works with both pipeline outputs).
 Load the scan and means tables, then use any of the following:
 
 ```r
@@ -277,6 +328,7 @@ A1 / A2 / A3
 XQTL2/
 ├── scripts/          # Core pipeline scripts (tracked in git)
 ├── scripts_oneoffs/  # Experiment-specific submit scripts (not tracked)
+├── configs/          # Per-experiment plot config files (not tracked)
 ├── helpfiles/        # Bam lists, barcode maps, parameter files (not tracked except
 │                     #   flymap.r6.txt and founder.bams.txt)
 ├── data/             # Raw reads and aligned bams (not tracked)
