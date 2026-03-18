@@ -32,104 +32,111 @@ fq2bam.sh  →  bam2bcf2REFALT.sh  →  REFALT2haps.R
                                     figures/slides/
 ```
 
-**Experiment-specific submit scripts** (in `scripts_oneoffs/`) orchestrate the full
-chain: submit scan arrays → depend concat → depend plots. `run_all_scans_125.sh` is
-the model for this pattern.
-
----
-
-## Pipeline 2 Details (freqsmooth / stable)
-
-`haps2scan.freqsmooth.sh` calls `haps2scan.freqsmooth.R` which sources
-`haps2scan.stable.code.R`. This code does:
-
-1. **Covariance matrix smoothing** — running mean of reconstruction error covariance
-   matrices across ±`SMOOTH_HALF` windows. Currently **hardcoded** to 50 (= ±250 kb
-   at 5 kb/window).
-2. **Eigenvalue regularization** — floors small eigenvalues at `RIDGE_FRACTION * mean`.
-   Currently hardcoded to 0.01. Fine to leave as a documented constant.
-3. **Frequency vector smoothing** (optional) — running mean of haplotype frequencies
-   across ±`FREQ_SMOOTH_HALF` windows. Already an explicit argument. Preferred value:
-   25 (= ±125 kb at 5 kb/window) for most experiments; 13 for 10 kb/window experiments.
-
-### The only remaining problem: `SMOOTH_HALF` is hardcoded
-
-`FREQ_SMOOTH_HALF` is already passed cleanly through `.sh` → `.R` → `.code.R`.
-`SMOOTH_HALF` is not — it is hardcoded at 50 in `stable.code.R`. This needs to become
-an explicit argument using the same pattern.
+Experiment-specific submit scripts (in `scripts_oneoffs/`) orchestrate the full chain.
+`run_all_scans_125.sh` is the model for this pattern.
 
 ---
 
 ## Remaining Work
 
-### Step 1 — Make `SMOOTH_HALF` an explicit argument
+### Step 1 — All smoothing parameters in kb
 
-**Pattern** (mirror how `FREQ_SMOOTH_HALF` is already handled):
+Users always specify smoothing in **kb**. Window counts are never exposed.
+The code derives the window step size from the actual position spacing in the data,
+then converts kb → windows internally.
 
-`haps2scan.freqsmooth.sh`:
+**Submit call:**
 ```bash
-COV_SMOOTH_HALF=$5
-FREQ_SMOOTH_HALF=$6
-Rscript scripts/haps2scan.freqsmooth.R $mychr $Rfile $mydir $myoutdir $COV_SMOOTH_HALF $FREQ_SMOOTH_HALF
+sbatch --array=1-5 scripts/haps2scan.freqsmooth.sh \
+    $Rfile $mydir $myoutdir $COV_SMOOTH_KB $FREQ_SMOOTH_KB
 ```
 
-`haps2scan.freqsmooth.R`:
+| Argument | Meaning | Default for new runs |
+|----------|---------|----------------------|
+| `COV_SMOOTH_KB`  | ±half-window for covariance smoothing | `125` |
+| `FREQ_SMOOTH_KB` | ±half-window for frequency smoothing  | `125` (or `0` to disable) |
+
+**`haps2scan.freqsmooth.sh`** — pass both kb values through:
+```bash
+COV_SMOOTH_KB=$5
+FREQ_SMOOTH_KB=$6
+Rscript scripts/haps2scan.freqsmooth.R $mychr $Rfile $mydir $myoutdir $COV_SMOOTH_KB $FREQ_SMOOTH_KB
+```
+
+**`haps2scan.freqsmooth.R`** — read both, pass to code:
 ```r
-COV_SMOOTH_HALF  <- as.integer(args[5])
-FREQ_SMOOTH_HALF <- as.integer(args[6])
+COV_SMOOTH_KB  <- as.integer(args[5])
+FREQ_SMOOTH_KB <- as.integer(args[6])
 ```
 
-`haps2scan.stable.code.R` — remove the hardcoded line:
+**`haps2scan.stable.code.R`** — compute step size from data, derive window counts
+internally, never expose them:
 ```r
-# REMOVE: SMOOTH_HALF <- 50
-# It is now set by the driver .R file before this file is sourced.
-if (!exists("SMOOTH_HALF"))      SMOOTH_HALF      <- 0L   # fallback: no cov smoothing
-if (!exists("FREQ_SMOOTH_HALF")) FREQ_SMOOTH_HALF <- 0L   # fallback: no freq smoothing
+# Remove hardcoded SMOOTH_HALF <- 50
+# COV_SMOOTH_KB and FREQ_SMOOTH_KB are set by the driver before this file is sourced.
+if (!exists("COV_SMOOTH_KB"))  COV_SMOOTH_KB  <- 0L
+if (!exists("FREQ_SMOOTH_KB")) FREQ_SMOOTH_KB <- 0L
+
+# Derive window step size from data (kb), convert smoothing distances to window counts
+positions  <- sort(unique(windows$pos))
+step_kb    <- median(diff(positions)) / 1000
+COV_HALF   <- if (COV_SMOOTH_KB  > 0) round(COV_SMOOTH_KB  / step_kb) else 0L
+FREQ_HALF  <- if (FREQ_SMOOTH_KB > 0) round(FREQ_SMOOTH_KB / step_kb) else 0L
 ```
 
-**Note on units:** Window counts are used internally because the conversion depends on
-the experiment's window step size (5 kb or 10 kb). The experiment-specific submit scripts
-(in `scripts_oneoffs/`) are where kb → window-count conversion is documented. This is
-appropriate — `run_all_scans_125.sh` already does this clearly in its header comment.
+`RIDGE_FRACTION` stays as a documented constant in the code (not a user-facing parameter).
+
+---
 
 ### Step 2 — Rename `pseudoscan` → `scan` in output filenames
 
-Simpler. Apply in `haps2scan.stable.code.R` (and `haps2scan.Apr2025.code.R` for
-consistency):
+Apply in both `haps2scan.stable.code.R` and `haps2scan.Apr2025.code.R`:
 
 ```r
-fileout              <- paste0(mydirout, "/", myoutdir, ".scan.",          mychr, ".txt")
-fileout_meansBySample<- paste0(mydirout, "/", myoutdir, ".meansBySample.", mychr, ".txt")
+fileout               <- paste0(mydirout, "/", myoutdir, ".scan.",          mychr, ".txt")
+fileout_meansBySample <- paste0(mydirout, "/", myoutdir, ".meansBySample.", mychr, ".txt")
 ```
 
-No need to encode smoothing parameters in the filename — the output directory name
-already carries that information (e.g., `ZINC2_M_freqs125/`), following the pattern
-established in `run_all_scans_125.sh`.
+The output directory name (e.g., `ZINC2_M_freqs125/`) already encodes the smoothing
+parameters — no need to repeat them in the filename.
 
-### Step 3 — `configs/` plotting scripts
+---
 
-The plotting scripts (`zinc2_125.R`, `aging_125.R`, etc.) live in `configs/` and are
-called from experiment-specific submit scripts. These are experiment-specific and do
-not need to be part of the core `scripts/` pipeline.
+### Step 3 — `haps2scan.stable.sh`
 
-**Open question:** Should example/template plotting scripts in `configs/` be tracked?
-They document the expected output format and serve as templates for new experiments.
-Recommendation: track at least one as a template (e.g., a generic `configs/example_scan_plot.R`).
+Drop it. `haps2scan.freqsmooth.sh` with `FREQ_SMOOTH_KB=0` covers that case.
+Delete the file (it just becomes one less thing to maintain).
 
-### Step 4 — Update `README.md`
+---
 
-Add section "Running the scan" with two subsections:
+### Step 4 — `configs/` plotting scripts
 
-**Pipeline 1 (no smoothing):**
+Plotting scripts (`zinc2_125.R`, `aging_125.R`, etc.) live in `configs/` and are called
+from experiment-specific submit scripts. They are experiment-specific.
+
+Track at least one as a documented template (e.g., `configs/example_scan_plot.R`) so new
+users know the expected inputs and figure format.
+
+**Open question:** Are the current `configs/` plotting scripts already pushed, or do they
+need to be added? If they document the new figure style, they should be tracked.
+
+---
+
+### Step 5 — Update `README.md`
+
+Add a "Running the scan" section with both pipelines:
+
+**Pipeline 1 — raw scan (no smoothing):**
 ```bash
 sbatch --array=1-5 scripts/haps2scan.Apr2025.sh $Rfile $mydir $myoutdir
 ```
 
-**Pipeline 2 (stabilized, with smoothing):**
+**Pipeline 2 — stabilized scan with smoothing:**
 ```bash
-# COV_SMOOTH_HALF: ±windows for covariance smoothing (50 = ±250kb at 5kb/window)
-# FREQ_SMOOTH_HALF: ±windows for frequency smoothing (25 = ±125kb at 5kb/window, 0 = off)
-sbatch --array=1-5 scripts/haps2scan.freqsmooth.sh $Rfile $mydir $myoutdir $COV_SMOOTH_HALF $FREQ_SMOOTH_HALF
+# COV_SMOOTH_KB:  covariance smoothing half-window in kb (0 = off, 125 = recommended)
+# FREQ_SMOOTH_KB: frequency smoothing half-window in kb  (0 = off, 125 = recommended)
+sbatch --array=1-5 scripts/haps2scan.freqsmooth.sh \
+    $Rfile $mydir $myoutdir 125 125
 ```
 
 Then concatenate and plot following the pattern in `scripts_oneoffs/run_all_scans_125.sh`.
@@ -139,19 +146,18 @@ Then concatenate and plot following the pattern in `scripts_oneoffs/run_all_scan
 ## Implementation Order
 
 - [x] 1. Cleanup, gitignore, track stable/freqsmooth scripts
-- [ ] 2. Add `SMOOTH_HALF` as explicit arg to `.sh` → `.R` → `.code.R`
-- [ ] 3. Remove hardcoded `SMOOTH_HALF <- 50` from `stable.code.R`; add `if (!exists(...))` fallback
-- [ ] 4. Rename `pseudoscan` → `scan` in output filenames (both pipelines)
-- [ ] 5. Resolve `configs/` tracking question; add example plot template if appropriate
-- [ ] 6. Update `README.md`
-- [ ] 7. Push; pull on cluster and test
+- [ ] 2. `haps2scan.freqsmooth.sh` — add `COV_SMOOTH_KB` as arg5, shift `FREQ_SMOOTH_KB` to arg6
+- [ ] 3. `haps2scan.freqsmooth.R` — read both kb args, set globals before sourcing `.code.R`
+- [ ] 4. `haps2scan.stable.code.R` — remove hardcoded values; compute step size from data; use `COV_HALF`/`FREQ_HALF` internally
+- [ ] 5. Rename `pseudoscan` → `scan` in output filenames (both `.code.R` files)
+- [ ] 6. Delete `haps2scan.stable.sh` (redundant)
+- [ ] 7. Add/track example plotting template in `configs/`
+- [ ] 8. Update `README.md`
+- [ ] 9. Push; pull on cluster and test
 
 ---
 
 ## Open Questions
 
-1. Should any `configs/` plotting scripts be tracked as templates?
-2. Should `haps2scan.stable.sh` (no freq smoothing) be kept, or is `haps2scan.freqsmooth.sh`
-   with `FREQ_SMOOTH_HALF=0` sufficient?
-3. `concat_Chromosome_Scans.Andreas.sh` — is this still the right concat script, or has
-   it been updated? Should it be renamed to drop the `Andreas` label?
+1. Are the `configs/` plotting scripts already pushed to the repo, or do they need to be added?
+2. Should `concat_Chromosome_Scans.Andreas.sh` be renamed to drop `Andreas`?
