@@ -2,74 +2,131 @@
 
 ## Overview
 
-This pipeline takes pooled-sequencing XQTL data from raw reads to genome scans and summary figures. Two scan pipelines are available:
+This pipeline takes pooled-sequencing XQTL data from raw reads to genome scans and
+summary figures. Two scan options are available:
 
 - **Legacy scan** (`haps2scan.Apr2025`) — raw scan, no smoothing
-- **Smooth scan** (`haps2scan.freqsmooth`) — stabilized scan with covariance and frequency smoothing (recommended for final analyses)
+- **Smooth scan** (`haps2scan.freqsmooth`) — stabilized scan with covariance and
+  frequency smoothing (recommended for final analyses)
 
-Both share the same upstream steps (alignment, REFALT counts, haplotype calling) and the same downstream concat/plot step.
+Both share the same upstream steps (alignment, REFALT counts, haplotype calling)
+and the same downstream concat/plot step.
+
+All scripts are run from the project root directory on a SLURM cluster.
 
 ---
 
 ## Step 1 — Get raw reads
 
+The sequencing core will send download links. Save them to a file and generate a
+download script:
+
 ```bash
-# Save the email from the sequencing core as blah.txt and extract download links
-cat blah.txt | grep http | cut -f1 -d' ' | awk '{printf("wget %s\n",$0)}' > get_data.sh
-mkdir data/raw/Oct28_24
-# Add SLURM header to get_data.sh, then:
-sbatch get_data.sh
+cat links.txt | grep http | cut -f1 -d' ' | awk '{printf("wget %s\n",$0)}' > get_data.sh
 ```
+
+Add a SLURM header to `get_data.sh` and submit. Store raw reads under `data/raw/`.
 
 ---
 
 ## Step 2 — Align reads to reference genome (fq → bam)
 
-```bash
-# Reference genome files go in ref/ (too large to track in git)
-# Copy from shared location or download dm6
-cp /dfs7/adl/tdlong/fly_pool/newpipeline_aging/XQTL_pipeline/ref/* ref/.
+### Reference genome
 
-# Create a barcode-to-sample mapping file (tab-delimited: F_barcode R_barcode sample_name)
-# e.g. helperfiles/readname.mapping.Oct28.txt
+Reference genome files go in `ref/` (too large for git). The pipeline expects `ref/dm6.fa`
+with standard BWA and samtools indices. Copy from a shared location or index your own.
 
-mkdir data/bam/Oct28_24
-NN=`wc -l helperfiles/readname.mapping.Oct28.txt | cut -f1 -d' '`
-sbatch --array=1-$NN scripts/fq2bam.sh \
-    helperfiles/readname.mapping.Oct28.txt data/raw/Oct28_24 data/bam/Oct28_24
+### Barcode-to-sample mapping file
+
+Create a tab-delimited file mapping sequencing barcodes to sample names. Each row is one
+sample with three fields: forward barcode, reverse barcode, sample name. Sample names
+become the bam file prefixes and readgroup IDs used throughout the pipeline — choose them
+carefully and consistently.
+
+```
+TGGCTATG    TTGTCAGC    R3con
+GTCCTAGA    TTGTCAGC    R3age
+ACTTGCCA    TTGTCAGC    R5con
+TCTTCGTG    TTGTCAGC    R5age
 ```
 
-Bam files below ~1G likely indicate failed library prep and should be reprocessed.
+Save this file to `helpfiles/` (e.g. `helpfiles/<experiment>.barcodes.txt`).
+
+### Run alignment
+
+```bash
+mkdir -p data/bam/<experiment>
+NN=$(wc -l < helpfiles/<experiment>.barcodes.txt)
+sbatch --array=1-$NN scripts/fq2bam.sh \
+    helpfiles/<experiment>.barcodes.txt \
+    data/raw/<experiment> \
+    data/bam/<experiment>
+```
+
+Bam files below ~1 GB likely indicate a failed library prep and should be reprocessed.
 
 ---
 
 ## Step 3 — Generate REFALT counts (bam → REFALT)
 
+Create a file listing all bam paths for your experiment (pooled samples + founders).
+Founders are pre-aligned; paths to the shared founder bams are in `helpfiles/founder.bams.txt`.
+
 ```bash
-mkdir process/Oct28_24
-find data/bam/Oct28_24 -name "*.bam" -size +1G > helpfiles/Oct28_24.bams
-cat helpfiles/founder.bams.txt | grep "B" >> helpfiles/Oct28_24.bams
-sbatch scripts/bam2bcf2REFALT.sh helpfiles/Oct28_24.bams process/Oct28_24
+mkdir -p process/<experiment>
+find data/bam/<experiment> -name "*.bam" -size +1G > helpfiles/<experiment>.bams
+cat helpfiles/founder.bams.txt >> helpfiles/<experiment>.bams
+
+sbatch scripts/bam2bcf2REFALT.sh \
+    helpfiles/<experiment>.bams \
+    process/<experiment>
 ```
 
 ---
 
 ## Step 4 — Call haplotypes (REFALT → haps)
 
-Edit `helpfiles/haplotype_parameters.R` to reflect your experiment (founders, sample names, step size, window size, tree cutoff). Then:
+### Haplotype parameters file
 
-```bash
-sbatch scripts/REFALT2haps.Andreas.sh helpfiles/haplotype_parameters.R process/Oct28_24
-```
-
-Key parameters in `haplotype_parameters.R`:
+Create a parameter file for your experiment (e.g. `helpfiles/<experiment>.hap_params.R`).
+This is an R script that is `source()`d by the pipeline. Required variables:
 
 ```r
-founders  <- c("B1","B2","B3","B4","B5","B6","B7","AB8")
-names_in_bam <- c("R1con","R1age", ...)   # must match bam file prefixes
-step      <- 5000    # window step in bp (5 kb typical; 10 kb for large experiments)
-size      <- 50000   # half-window size in bp for haplotype inference
-h_cutoff  <- 2.5     # tree height cutoff to flag indistinguishable founders
+# Founder set for this population
+founders <- c("B1","B2","B3","B4","B5","B6","B7","AB8")
+
+# Sample names — must exactly match the bam file prefixes / readgroup IDs from Step 2
+names_in_bam <- c("R1con","R1age","R2con","R2age","R3con","R3age",
+                   "R4con","R4age","R5con","R5age","R6con","R6age")
+
+# Window step size in bp — haplotypes are inferred every step bp along the genome.
+# 5000 (5 kb) is typical; use 10000 (10 kb) for very large experiments to save runtime.
+step <- 5000
+
+# Half-window size in bp for haplotype inference.
+# Larger windows improve inference quality but reduce localization precision.
+# 50000 (50 kb) is a reasonable default; 25000 works well for high-coverage data.
+size <- 50000
+
+# Tree height cutoff: founders closer than this (Euclidean distance across SNPs in
+# the window) are treated as indistinguishable. 2.5 is a conservative default.
+h_cutoff <- 2.5
+```
+
+To generate `names_in_bam` from your bam directory:
+```bash
+echo -n "names_in_bam <- c(" && \
+find data/bam/<experiment> -name "*.bam" -size +1G -print0 | \
+xargs -0 -n1 basename | sed 's/.bam//' | sort | \
+sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//' && echo ")"
+```
+
+### Run haplotype calling
+
+```bash
+sbatch --array=1-5 scripts/REFALT2haps.Andreas.sh \
+    --parfile helpfiles/<experiment>.hap_params.R \
+    --dir     process/<experiment>
 ```
 
 ---
@@ -78,87 +135,102 @@ h_cutoff  <- 2.5     # tree height cutoff to flag indistinguishable founders
 
 ### Design file
 
-Both scan pipelines take a design file readable by `read.table()` with these required columns:
+Both scan options take a design file: a plain text table readable by R's `read.table()`,
+saved with `write.table()` from R. Required columns:
 
 | Column | Description |
 |--------|-------------|
-| `bam` | Sample name (must match bam file prefix / readgroup) |
-| `TRT` | `C` = control, `Z` = selected (other values ignored) |
-| `REP` | Replicate number |
-| `REPrep` | Technical replicate within replicate (usually `1`) |
+| `bam` | Sample name — must exactly match bam prefix / readgroup from Step 2 |
+| `TRT` | `C` = control, `Z` = selected (rows with other values are ignored) |
+| `REP` | Replicate number (integer) |
+| `REPrep` | Technical replicate within replicate — usually `1` |
 | `Num` | Number of flies in pool |
-| `Proportion` | Proportion selected (`NA` for controls) |
+| `Proportion` | Proportion of flies selected (`NA` for controls) |
 
-Example:
-```
-bam         TRT  REP  REPrep  Num   Proportion
-STV1_F_Con  C    1    1       1205  NA
-STV1_F_Res  Z    1    1       115   0.0871
-STV2_F_Con  C    2    1       1387  NA
-STV2_F_Res  Z    2    1       296   0.1540
+Extra columns are allowed and ignored. `Proportion` should be a decimal (not percent).
+Create and save this file from R:
+
+```r
+design <- data.frame(
+    bam        = c("R1con","R1age","R2con","R2age","R3con","R3age"),
+    TRT        = c("C","Z","C","Z","C","Z"),
+    REP        = c(1,1,2,2,3,3),
+    REPrep     = 1,
+    Num        = c(1205,115,1387,296,1631,174),
+    Proportion = c(NA,0.087,NA,0.154,NA,0.088)
+)
+write.table(design, "helpfiles/<experiment>.design.txt")
 ```
 
 ### Legacy scan (no smoothing)
 
 ```bash
 sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
-    helpfiles/mydesign.txt process/Oct28_24 SCAN_NAME
+    --rfile  helpfiles/<experiment>.design.txt \
+    --dir    process/<experiment> \
+    --outdir <scan_name>
 ```
 
 ### Smooth scan (recommended)
 
 ```bash
-# COV_SMOOTH_KB:  covariance smoothing half-window in kb (0 = off; 125 recommended)
-# FREQ_SMOOTH_KB: frequency smoothing half-window in kb  (0 = off; 125 recommended)
 sbatch --array=1-5 scripts/haps2scan.freqsmooth.sh \
-    helpfiles/mydesign.txt process/Oct28_24 SCAN_NAME 125 125
+    --rfile          helpfiles/<experiment>.design.txt \
+    --dir            process/<experiment> \
+    --outdir         <scan_name> \
+    --cov-smooth-kb  125 \
+    --freq-smooth-kb 125
 ```
 
-Pipeline 2 applies:
-1. **Covariance smoothing** — running mean of reconstruction error covariance matrices
-   across a ±`COV_SMOOTH_KB` half-window. Reduces noise in the Wald test statistic.
-2. **Eigenvalue regularization** — floors small eigenvalues to stabilize matrix inversion.
-3. **Frequency smoothing** (optional) — running mean of haplotype frequency vectors
-   across a ±`FREQ_SMOOTH_KB` half-window before computing the Wald test.
+`--cov-smooth-kb` and `--freq-smooth-kb` specify the smoothing half-window in kilobases.
+Set to `0` to disable that smoothing type. 125 kb is recommended for both.
+The smooth scan also applies eigenvalue regularization to stabilize the Wald test.
+Window counts are derived automatically from the actual data spacing in the haps file —
+you always specify distances in kb.
 
-Window counts are derived automatically from the actual data spacing — you always
-specify distances in kb.
-
-See `scripts_oneoffs/run_all_scans_125.sh` for an example of how to chain multiple
-experiments with dependency management.
+The output directory `<scan_name>` is created inside `process/<experiment>/`. Choose a
+name that reflects the analysis (e.g. `ZINC2_F_smooth125`).
 
 ---
 
 ## Step 6 — Concatenate chromosomes and generate summary figures
 
+Once all five chromosome jobs finish:
+
 ```bash
-bash scripts/concat_Chromosome_Scans.sh process/Oct28_24/SCAN_NAME
+bash scripts/concat_Chromosome_Scans.sh process/<experiment>/<scan_name>
 ```
 
-This merges the per-chromosome scan files into a single table, applies a light
-sliding-window smooth to the summary statistics, and generates three figures:
+This merges the per-chromosome scan files, applies a light sliding-window smooth to
+the summary statistics, and generates three figures:
 
-- `SCAN_NAME.5panel.Mb.png` — 5-panel Manhattan plot (physical position)
-- `SCAN_NAME.5panel.cM.png` — 5-panel Manhattan plot (genetic position)
-- `SCAN_NAME.Manhattan.png` — combined Manhattan plot
-
-Output files are also bundled into `SCAN_NAME.tar.gz`.
+| File | Description |
+|------|-------------|
+| `<scan_name>.scan.txt` | Full genome scan table |
+| `<scan_name>.meansBySample.txt` | Per-founder frequency table |
+| `<scan_name>.5panel.Mb.png` | 5-panel Manhattan plot (physical position) |
+| `<scan_name>.5panel.cM.png` | 5-panel Manhattan plot (genetic position) |
+| `<scan_name>.Manhattan.png` | Combined Manhattan plot |
+| `<scan_name>.tar.gz` | All of the above bundled |
 
 ---
 
-## Step 7 — Download results and explore
+## Step 7 — Download and explore results
+
+Copy the summary files to your local machine:
 
 ```bash
-scp tdlong@hpc3.rcic.uci.edu:.../SCAN_NAME/SCAN_NAME.scan.txt .
-scp tdlong@hpc3.rcic.uci.edu:.../SCAN_NAME/SCAN_NAME.meansBySample.txt .
-scp tdlong@hpc3.rcic.uci.edu:.../SCAN_NAME/SCAN_NAME.5panel.cM.png .
+scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.scan.txt .
+scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.meansBySample.txt .
+scp <user>@<cluster>:<project_path>/process/<experiment>/<scan_name>/<scan_name>.5panel.cM.png .
 ```
-
-The `.scan.txt` and `.meansBySample.txt` files are the primary outputs for downstream analysis.
 
 ---
 
 ## Plotting functions
+
+`scripts/XQTL_plotting_functions.R` provides functions for exploring scan results.
+Load the scan and means tables, then use any of the following:
 
 ```r
 library(tidyverse)
@@ -170,19 +242,31 @@ source("scripts/XQTL_plotting_functions.R")
 df1 <- as_tibble(read.table("SCAN_NAME.scan.txt"))
 df2 <- as_tibble(read.table("SCAN_NAME.meansBySample.txt"))
 
+# Genome-wide Manhattan plots
 XQTL_Manhattan_5panel(df1, cM = FALSE)
 XQTL_Manhattan_5panel(df1, cM = TRUE)
 XQTL_Manhattan(df1, cM = FALSE, color_scheme = "UCI")
+
+# Regional plots
+XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
 XQTL_change_average(df2, "chr3R", 18250000, 19000000)
 XQTL_change_average(df2, "chr3R", 18250000, 19000000, reference_strain = "B5")
 XQTL_change_byRep(df2, "chr3R", 18250000, 19000000)
 XQTL_beforeAfter_selectReps(df2, "chr3R", 18250000, 19000000, reps = c(1,7,9,12))
-XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
 XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 
-# Zoom to a peak automatically
-out <- XQTL_zoom(df1, "chr2L", 15000000, 16000000, 3, 3)
+# Zoom to a peak automatically — adjust left/right log10p drop thresholds until satisfied
+out <- XQTL_zoom(df1, "chr2L", 15000000, 16000000, drop_left = 3, drop_right = 3)
 out$plot
+A1 <- XQTL_region(df1, out$chr, out$start, out$stop, "Wald_log10p")
+A2 <- XQTL_change_average(df2, out$chr, out$start, out$stop)
+A1 / A2
+
+# With gene track (requires rtracklayer / GenomicRanges and a GTF file)
+# wget https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/genes/dm6.ncbiRefSeq.gtf.gz
+gtf <- rtracklayer::import("dm6.ncbiRefSeq.gtf")
+A3  <- XQTL_genes(gtf, out$chr, out$start, out$stop)
+A1 / A2 / A3
 ```
 
 ---
@@ -191,12 +275,12 @@ out$plot
 
 ```
 XQTL2/
-├── scripts/          # Core pipeline scripts (tracked)
-├── scripts_oneoffs/  # Experiment-specific submit and plot scripts (not tracked)
-├── helpfiles/        # Design files, bam lists, parameter files
-├── configs/          # Experiment-specific plotting configs
-├── data/             # Raw and aligned data (not tracked)
+├── scripts/          # Core pipeline scripts (tracked in git)
+├── scripts_oneoffs/  # Experiment-specific submit scripts (not tracked)
+├── helpfiles/        # Bam lists, barcode maps, parameter files (not tracked except
+│                     #   flymap.r6.txt and founder.bams.txt)
+├── data/             # Raw reads and aligned bams (not tracked)
 ├── ref/              # Reference genome (not tracked)
-├── process/          # Pipeline outputs (not tracked)
+├── process/          # All pipeline outputs (not tracked)
 └── figures/          # Summary figures (not tracked)
 ```
