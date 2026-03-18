@@ -34,7 +34,7 @@ wald.test3 = function(p1,p2,covar1,covar2,nrepl=1,N1=NA,N2=NA){
     # N1 (initial) and N2 (after treatment) 
     # are sample sizes, they are vectors when there is more than one replicate
     # N1[i], N2[i] are then for replicate i
-    if (nrepl>1){
+    if (nrepl>=1){
       N1.eff=rep(NA,nrepl)
       N2.eff=rep(NA,nrepl)
       lp1 = length(p1[1,])
@@ -87,6 +87,7 @@ mn.covmat= function(p,n,min.p=0){
   # n is sample size
   # compute covariance matrix for relative frequencies, for absolute frequencies multiply by n^2
   # if min.p >0, then values of p smaller than min.p are set to min.p and the resulting vector is rescaled.
+  p <- as.vector(p)
   p[p<min.p] = min.p; p=p/sum(p)
   mat = - tcrossprod(p)
   diag(mat) = p*(1-p)
