@@ -2,20 +2,22 @@
 # plot_pseudoscan.R  —  source this file, do not edit it
 #
 # Expects the following variables to be defined before source() is called.
-# See the configs/ directory for examples.
+# See helpfiles/<project_name>/ for example configs.
 #
 # Required:
-#   SCAN_FILES    character vector of scan file paths (.scan.txt)
-#   SCAN_LABELS   character vector of legend labels (or NULL)
-#   SCAN_COLOURS  character vector of colours (or NULL for auto-palette)
+#   SCAN_FILES    character vector of .scan.txt paths — one per scan to overlay
+#   SCAN_LABELS   character vector of legend labels, one per scan (or NULL)
+#   SCAN_COLOURS  character vector of colours, one per scan (or NULL for auto)
 #   THRESHOLD     numeric — Wald value for dashed threshold line (or NULL)
-#   OUT_FILE      character — output filename (.png)
-#   OUT_HEIGHT_IN numeric — height in inches
+#   OUT_FILE      character — output .png path
 #   FORMAT        character — one of: manuscript_half, manuscript_full,
 #                   manuscript_half_hires, manuscript_full_hires,
 #                   powerpoint, web, email
+#
+# Optional:
+#   OUT_HEIGHT_IN numeric — height in inches; defaults to 1.4 in per chromosome
 #   PEAKS         data frame with columns chr, pos_mb, label (or NULL)
-#   GENES         data frame with columns name, chr, pos_bp (or NULL)
+#   GENES         data frame with columns name, chr, pos_mb (or NULL)
 #
 # Optional override (dm6 defaults used if not set):
 #   HET_BOUNDS    data frame with columns chr, eu_start, eu_end
@@ -77,6 +79,10 @@ scans_df <- map_dfr(seq_along(SCAN_FILES), function(i) {
   filter(!is.na(Wald_log10p), chr %in% chr_order)
 
 if (nrow(scans_df) == 0) stop("No scan data loaded — check SCAN_FILES paths.")
+
+# ── Auto height ───────────────────────────────────────────────────────────────
+if (!exists("OUT_HEIGHT_IN"))
+  OUT_HEIGHT_IN <- length(unique(as.character(scans_df$chr))) * 1.4
 
 colour_map <- setNames(colours, labels)
 
@@ -158,7 +164,7 @@ if (!is.null(PEAKS) && nrow(PEAKS) > 0) {
 
 if (!is.null(GENES) && nrow(GENES) > 0) {
   genes_plot <- GENES %>%
-    mutate(chr = factor(chr, levels = chr_order), pos_mb = pos_bp / 1e6) %>%
+    mutate(chr = factor(chr, levels = chr_order)) %>%
     filter(chr %in% chr_order)
 
   p <- p +

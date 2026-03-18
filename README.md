@@ -247,30 +247,62 @@ the summary statistics, and generates three figures:
 
 The smooth scan has a dedicated plotting script (`scripts/plot_pseudoscan.R`) that
 produces cleaner figures suitable for presentations and manuscripts. It is driven by
-a small config file that you create per experiment.
+a small config file you create per experiment, stored alongside the other
+experiment-specific files in `helpfiles/<project_name>/`.
 
 ### Create a config file
 
-Save a file to `configs/<project_name>.R` (this directory is not tracked in git):
+Save a file to `helpfiles/<project_name>/plot_config.R`. The simplest case — a
+single scan:
 
 ```r
-SCAN_FILES <- c(
-    "process/<project_name>/<scan_name>/<scan_name>.scan.txt"
-)
-SCAN_LABELS  <- NULL                       # or c("label1") to override legend
-SCAN_COLOURS <- c("#1F78B4")               # one colour per scan file
-THRESHOLD    <- 10                         # dashed line at this Wald -log10p
-OUT_FILE     <- "figures/<project_name>.png"
-FORMAT       <- "powerpoint"               # see FORMAT options below
-OUT_HEIGHT_IN <- 7.0
-PEAKS        <- NULL                       # or data.frame(chr, pos_mb, label)
-GENES        <- NULL                       # or data.frame(name, chr, pos_bp)
+SCAN_FILES   <- c("process/<project_name>/<scan_name>/<scan_name>.scan.txt")
+SCAN_COLOURS <- c("#1F78B4")
+SCAN_LABELS  <- NULL       # NULL uses the scan file basename as the label
+THRESHOLD    <- 10         # dashed line at this Wald -log10(p)
+OUT_FILE     <- "process/<project_name>/<scan_name>/<scan_name>.png"
+FORMAT       <- "powerpoint"
+PEAKS        <- NULL
+GENES        <- NULL
 
 source("scripts/plot_pseudoscan.R")
 ```
 
-To overlay multiple scans (e.g. male and female) in one plot, add more paths to
-`SCAN_FILES` and matching entries in `SCAN_COLOURS`.
+To overlay two scans (e.g. males and females) in one plot, extend the vectors:
+
+```r
+SCAN_FILES <- c(
+    "process/<project_name>/<scan_name_M>/<scan_name_M>.scan.txt",
+    "process/<project_name>/<scan_name_F>/<scan_name_F>.scan.txt"
+)
+SCAN_COLOURS <- c("#1F78B4", "#E31A1C")   # one colour per scan
+SCAN_LABELS  <- c("Male", "Female")
+THRESHOLD    <- 10
+OUT_FILE     <- "process/<project_name>/<scan_name_M>_vs_F.png"
+FORMAT       <- "powerpoint"
+PEAKS        <- NULL
+GENES        <- NULL
+
+source("scripts/plot_pseudoscan.R")
+```
+
+Height is calculated automatically (1.4 in per chromosome). Override with
+`OUT_HEIGHT_IN <- 9.0` if needed.
+
+To annotate genes and peaks — both use Mb coordinates:
+
+```r
+GENES <- data.frame(
+    name   = c("Ace",   "Cyp6g1"),
+    chr    = c("chr3R", "chr2R"),
+    pos_mb = c(9.07,    12.19)
+)
+PEAKS <- data.frame(
+    label  = c("peak1"),
+    chr    = c("chr3R"),
+    pos_mb = c(9.1)
+)
+```
 
 ### FORMAT options
 
@@ -287,8 +319,7 @@ To overlay multiple scans (e.g. male and female) in one plot, add more paths to
 ### Run the config
 
 ```bash
-mkdir -p figures
-Rscript configs/<project_name>.R
+Rscript helpfiles/<project_name>/plot_config.R
 ```
 
 ---
@@ -307,9 +338,9 @@ scp <user>@<cluster>:<project_path>/process/<project_name>/<scan_name>/<scan_nam
 
 ## Interactive plotting functions
 
-`scripts/XQTL_plotting_functions.R` provides functions for exploring scan results
-interactively (works with both pipeline outputs).
-Load the scan and means tables, then use any of the following:
+`scripts/XQTL_plotting_functions.R` provides functions for interactive exploration
+of scan results (works with both pipeline outputs). Run from the project root or
+point the paths at local copies of the files downloaded in Step 8.
 
 ```r
 library(tidyverse)
@@ -318,8 +349,10 @@ library(ggplot2)
 library(RColorBrewer)
 
 source("scripts/XQTL_plotting_functions.R")
-df1 <- as_tibble(read.table("SCAN_NAME.scan.txt"))
-df2 <- as_tibble(read.table("SCAN_NAME.meansBySample.txt"))
+
+scan_dir <- "process/<project_name>/<scan_name>"
+df1 <- as_tibble(read.table(file.path(scan_dir, "<scan_name>.scan.txt")))
+df2 <- as_tibble(read.table(file.path(scan_dir, "<scan_name>.meansBySample.txt")))
 
 # Genome-wide Manhattan plots
 XQTL_Manhattan_5panel(df1, cM = FALSE)
@@ -334,7 +367,7 @@ XQTL_change_byRep(df2, "chr3R", 18250000, 19000000)
 XQTL_beforeAfter_selectReps(df2, "chr3R", 18250000, 19000000, reps = c(1,7,9,12))
 XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 
-# Zoom to a peak automatically — adjust left/right log10p drop thresholds until satisfied
+# Zoom to a peak automatically — adjust drop thresholds until the window looks right
 out <- XQTL_zoom(df1, "chr2L", 15000000, 16000000, drop_left = 3, drop_right = 3)
 out$plot
 A1 <- XQTL_region(df1, out$chr, out$start, out$stop, "Wald_log10p")
@@ -356,7 +389,6 @@ A1 / A2 / A3
 XQTL2/
 ├── scripts/              # Core pipeline scripts (tracked in git)
 ├── scripts_oneoffs/      # Experiment-specific submit scripts (not tracked)
-├── configs/              # Per-experiment plot config files (not tracked)
 ├── helpfiles/
 │   ├── flymap.r6.txt                         (tracked)
 │   ├── founder.bams.txt                      (tracked)
@@ -364,7 +396,8 @@ XQTL2/
 │       ├── <project_name>.barcodes.txt       (Step 2)
 │       ├── bams                              (Step 3)
 │       ├── hap_params.R                      (Step 4)
-│       └── design.txt                        (Step 5)
+│       ├── design.txt                        (Step 5)
+│       └── plot_config.R                     (Step 7)
 ├── data/
 │   ├── raw/<project_name>/                   (Step 1 — raw reads)
 │   └── bam/<project_name>/                   (Step 2 — aligned bams)
