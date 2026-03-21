@@ -4,18 +4,23 @@
 # Test the freqsmooth pipeline on the malathion dataset.
 # Run from the XQTL2 project root.
 #
-# Assumes R.haps.<chr>.out.rds files already exist in process/malathion_test/
-# (steps 1-4 of malathion_test_pipeline.sh have been completed).
+# Prerequisites:
+#   1. R.haps.<chr>.out.rds files exist in process/malathion_test/
+#      (steps 1-4 of malathion_test_pipeline.sh already completed)
+#   2. SNP_TABLE path below points to FREQ_SNPs.cM.txt.gz on this cluster
+#   3. helpfiles/malathion_test/MALATHION_TEST_v2_smooth125.R figure script exists
 #
-# Submit with:  bash scripts_oneoffs/malathion_test_v2.sh
+# Submit with:  bash helpfiles/malathion_test/malathion_test_v2.sh
 
 PROJECT=malathion_test
 DESIGN=helpfiles/${PROJECT}/design.txt
 SCAN=MALATHION_TEST_v2_smooth125
 SMOOTH_KB=125
-SNP_TABLE=FREQ_SNPs.cM.txt.gz
 FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
 FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
+
+# ── SET THIS to the cluster path of FREQ_SNPs.cM.txt.gz ──────────────────────
+SNP_TABLE=/dfs7/adl/tdlong/fly_pool/FREQ_SNPs.cM.txt.gz
 
 # ── Step 5a: smooth haplotype frequencies ─────────────────────────────────────
 # Reads R.haps.<chr>.out.rds, writes smoothed RDS + meansBySample per chromosome

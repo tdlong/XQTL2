@@ -66,7 +66,75 @@ Dependencies (read-only):
 
 ---
 
-## 4. Shared Parameters
+## 4. Data Flow
+
+```
+R.haps.<chr>.out.rds
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│  smooth_haps.R  (Step 5a — one job per chromosome)      │
+│                                                         │
+│  • Unnest Haps + Err list-columns to long format        │
+│  • Apply edge-aware running mean (±SMOOTH_HALF windows) │
+│    — separately to each (TRT, REP, founder) freq series │
+│    — separately to each (TRT, REP, fi, fj) cov element  │
+│  • SMOOTH_HALF = round(SMOOTH_KB * 1000 / step_bp)     │
+└─────────────────────────────────────────────────────────┘
+        │                      │
+        ▼                      ▼
+<scan>.smooth.<chr>.rds    <scan>.meansBySample.<chr>.txt
+ (freq + err, long fmt)     (chr, pos, TRT, REP, founder, freq)
+        │
+        ├────────────────────────────────────────┐
+        │                                        │
+        ▼                                        ▼
+┌──────────────────────────┐     ┌──────────────────────────────────┐
+│  freqsmooth_scan.R       │     │  snp_scan.R                      │
+│  (Step 5b)               │     │  (Step 5c — runs in parallel)    │
+│                          │     │                                  │
+│  Per haplotype window:   │     │  Load FREQ_SNPs.cM.txt.gz        │
+│  • pivot_wider → p1, p2  │     │  Assign SNPs to nearest window   │
+│    matrices (nrepl × nF) │     │  Per window group of SNPs:       │
+│  • rebuild Err arrays    │     │  • S %*% t(H_C/Z) → SNP freqs   │
+│  • pool reps (N_eff wt)  │     │  • S2 %*% Err %*% t(S2) → cov  │
+│  • stabilized Wald test  │     │  • pool reps, Wald test (df=1)  │
+│    df = nF − 1           │     │  • Falconer + Cutler H²         │
+│  • Falconer + Cutler H²  │     └──────────────────────────────────┘
+└──────────────────────────┘              │
+        │                                 │
+        ▼                                 ▼
+<scan>.scan.<chr>.txt          <scan>.snp_scan.<chr>.txt
+(chr, pos, Wald_log10p,        (chr, pos, Wald_log10p,
+ Falc_H2, Cutl_H2, cM)         Falc_H2, Cutl_H2, cM,
+                                n_informative_founders)
+        │                                 │
+        └──────────────┬──────────────────┘
+                       ▼
+        concat_Chromosome_Scans.sh (Step 6)
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+    <scan>.scan.txt  <scan>.meansBySample.txt  <scan>.snp_scan.txt
+                       │
+                       ▼
+             Figure script (Step 7)
+             MALATHION_TEST_v2_smooth125.R
+```
+
+**Dependency graph for SLURM jobs:**
+
+```
+smooth (array 1-5)
+   ├──▶ scan (array 1-5)  ─────┐
+   └──▶ snp_scan (array 1-5) ──┴──▶ concat ──▶ figure
+```
+
+Steps 5b and 5c both depend on 5a completing but are independent of each other and run in parallel.
+
+---
+
+## 5. Shared Parameters
 
 All scripts use the same named command-line arguments, matching the conventions already established in `malathion_test_pipeline.sh`:
 
@@ -89,7 +157,7 @@ The conversion from kb to window counts is an **internal implementation detail**
 
 ---
 
-## 5. Step 1 — Smooth Haplotype Frequencies
+## 6. Step 1 — Smooth Haplotype Frequencies
 
 ### Input
 `R.haps.<chr>.out.rds` — haplotype frequency estimates per pool, one file per chromosome, containing per-pool haplotype frequency estimates and reconstruction covariance matrices at ~5 kb windows.
@@ -123,7 +191,7 @@ Applied to:
 
 ---
 
-## 6. Step 2 — Scan on Smoothed Frequencies
+## 7. Step 2 — Scan on Smoothed Frequencies
 
 ### Input
 `<scan_name>.smoothed.out.<chr>.rds` from Step 1.
@@ -147,7 +215,7 @@ The Wald test logic (eigendecomposition, ridge regularization, effective N, repl
 
 ---
 
-## 7. Step 3 — SNP-Based QTL Scan
+## 8. Step 3 — SNP-Based QTL Scan
 
 ### Input
 - `<scan_name>.smoothed.out.<chr>.rds` from Step 1 (smoothed haplotype frequencies and covariances)
@@ -270,7 +338,7 @@ Downstream Manhattan plots work unchanged — they use `chr`, `pos`, `Wald_log10
 
 ---
 
-## 8. Test Pipeline — Malathion Data
+## 9. Test Pipeline — Malathion Data
 
 `malathion_test_v2.sh` takes the haplotype RDS files produced by the existing pipeline (steps 1–4 unchanged) and runs the new steps 5a–5c in their place.
 
@@ -319,7 +387,7 @@ Steps 5b and 5c both depend on 5a but are independent of each other, so they run
 
 ---
 
-## 9. Validation Checklist
+## 10. Validation Checklist
 
 After running the test pipeline on malathion data, compare against the current pipeline output:
 
@@ -332,7 +400,7 @@ After running the test pipeline on malathion data, compare against the current p
 
 ---
 
-## 10. Integration Path
+## 11. Integration Path
 
 If the malathion test validates the new approach, the intent is:
 
@@ -343,7 +411,7 @@ If the malathion test validates the new approach, the intent is:
 
 The new pipeline is a strict superset of the old smooth scan: it produces the same `.scan.txt` and `.meansBySample.txt` files (now consistently using smoothed frequencies throughout), plus a new `.snp_scan.txt`. All existing downstream steps and plotting functions continue to work unchanged.
 
-## 11. Resolved Decisions
+## 12. Resolved Decisions
 
 | Question | Decision |
 |----------|----------|
