@@ -20,7 +20,7 @@ FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
 FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
 
 # ── SET THIS to the cluster path of FREQ_SNPs.cM.txt.gz ──────────────────────
-SNP_TABLE=/dfs7/adl/tdlong/fly_pool/FREQ_SNPs.cM.txt.gz
+SNP_TABLE=/dfs7/adl/tdlong/fly_pool/FREQ_SNPs_Apop.cM.txt.gz
 
 # ── Step 5a: smooth haplotype frequencies ─────────────────────────────────────
 # Reads R.haps.<chr>.out.rds, writes smoothed RDS + meansBySample per chromosome
