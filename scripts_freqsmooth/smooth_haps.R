@@ -94,18 +94,27 @@ freq_smoothed <- xx1 %>%
 # Average within (window, TRT, REP, fi, fj) then smooth across windows
 cat("Smoothing covariance matrices...\n")
 
-err_smoothed <- xx1 %>%
+err_unnested <- xx1 %>%
   select(CHROM, pos, sample, Err) %>%
   unnest(c(sample, Err)) %>%
   rename(pool = sample) %>%
   left_join(design.df %>% select(bam, TRT, REP), by = c("pool" = "bam")) %>%
-  filter(!is.na(TRT)) %>%
-  mutate(cov_long = map(Err, function(m) {
-    m <- as.matrix(m)
-    tibble(fi = as.integer(row(m)), fj = as.integer(col(m)), v = as.vector(m))
-  })) %>%
+  filter(!is.na(TRT))
+
+# Vectorized covariance expansion — column-major order matches as.vector()
+nF_cov  <- nrow(as.matrix(err_unnested$Err[[1]]))
+nF2     <- nF_cov^2L
+fi_tmpl <- rep(seq_len(nF_cov), nF_cov)               # row indices
+fj_tmpl <- rep(seq_len(nF_cov), each = nF_cov)        # col indices
+v_mat   <- do.call(rbind, lapply(err_unnested$Err,     # n_rows x nF2
+             function(m) as.vector(as.matrix(m))))
+
+err_smoothed <- err_unnested %>%
   select(-Err) %>%
-  unnest(cov_long) %>%
+  tidyr::uncount(nF2) %>%
+  mutate(fi = rep(fi_tmpl, nrow(err_unnested)),
+         fj = rep(fj_tmpl, nrow(err_unnested)),
+         v  = as.vector(t(v_mat))) %>%
   group_by(CHROM, pos, TRT, REP, fi, fj) %>%
   summarize(v = mean(v, na.rm = TRUE), .groups = "drop") %>%
   arrange(CHROM, pos) %>%

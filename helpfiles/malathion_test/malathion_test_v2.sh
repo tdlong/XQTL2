@@ -32,9 +32,13 @@ jid_smooth=$(sbatch --parsable \
     --smooth-kb ${SMOOTH_KB})
 echo "smooth:  $jid_smooth"
 
+# Explicit per-task dependency: afterok on an array job ID is unreliable in
+# older SLURM (may release on first task completion).  List all 5 task IDs.
+smooth_dep="afterok:${jid_smooth}_1:${jid_smooth}_2:${jid_smooth}_3:${jid_smooth}_4:${jid_smooth}_5"
+
 # ── Step 5b: Wald scan on smoothed frequencies ────────────────────────────────
 # Reads smoothed RDS, writes scan.<chr>.txt per chromosome
-jid_scan=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
+jid_scan=$(sbatch --parsable --dependency=${smooth_dep} \
     --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
     --rfile   ${DESIGN}            \
     --dir     process/${PROJECT}   \
@@ -43,7 +47,7 @@ echo "scan:    $jid_scan"
 
 # ── Step 5c: SNP scan (runs in parallel with 5b) ──────────────────────────────
 # Reads smoothed RDS + FREQ_SNPs, writes snp_scan.<chr>.txt per chromosome
-jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
+jid_snp=$(sbatch --parsable --dependency=${smooth_dep} \
     --array=1-5 scripts_freqsmooth/snp_scan.sh \
     --rfile     ${DESIGN}            \
     --dir       process/${PROJECT}   \
@@ -53,7 +57,9 @@ jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
 echo "snp:     $jid_snp"
 
 # ── Step 6: concatenate chromosomes ──────────────────────────────────────────
-jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan}:${jid_snp} \
+scan_dep="afterok:${jid_scan}_1:${jid_scan}_2:${jid_scan}_3:${jid_scan}_4:${jid_scan}_5"
+snp_dep="afterok:${jid_snp}_1:${jid_snp}_2:${jid_snp}_3:${jid_snp}_4:${jid_snp}_5"
+jid_concat=$(sbatch --parsable --dependency=${scan_dep}:${snp_dep#afterok:} \
     -A tdlong_lab -p standard --mem=10G \
     --wrap="bash scripts/concat_Chromosome_Scans.sh process/${PROJECT}/${SCAN}")
 echo "concat:  $jid_concat"
