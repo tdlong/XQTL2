@@ -19,7 +19,7 @@ SMOOTH_KB=125
 FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
 FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
 
-SNP_TABLE=helpfiles/${PROJECT}/FREQ_SNPs_Apop.cM.txt.gz
+SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
 
 # ── Step 5a: smooth haplotype frequencies ─────────────────────────────────────
 # Reads R.haps.<chr>.out.rds, writes smoothed RDS + meansBySample per chromosome
