@@ -121,15 +121,68 @@ individual SNPs is not considered meaningful at this stage.
 
 ---
 
-## Integration Path (after validation)
+## Integration Plan (approved, ready to implement)
 
-1. Move `scripts_freqsmooth/` scripts into `scripts/` as canonical implementation
-2. Update `README.md` Step 5 to document the new three-script pipeline
-3. Add Step 5c (SNP scan) to README
-4. Update the "Putting it all together" template in README to include smooth_haps + freqsmooth_scan + snp_scan
-5. Add `plot_freqsmooth_H2.R`, `plot_freqsmooth_snp.R`, `plot_H2_overlay.R` to README Step 7
-6. Retire `haps2scan.freqsmooth.sh` / `haps2scan.freqsmooth.code.R` (or keep as legacy option)
-7. Archive `scripts_freqsmooth/` directory
+### Guiding principles
+- README is the user-facing truth. Every script change must be reflected there.
+- One start-to-finish pipeline template in the README — a user copies it, fills in variables, runs it.
+- Simplify: the malathion test helper scripts are test artifacts; the production pattern is one `scripts_oneoffs/<project>_pipeline.sh` per experiment.
+- Keep `haps2scan.Apr2025` as a documented alternative (genuinely different — no smoothing).
+
+### Scripts — what changes
+
+| Action | Scripts |
+|--------|---------|
+| **Move** `scripts_freqsmooth/` → `scripts/` | `smooth_haps.R/.sh`, `freqsmooth_scan.R/.sh`, `snp_scan.R/.sh`, `concat_snp_scans.sh`, `prep_snp_table.R` |
+| **Retire** (delete) | `haps2scan.freqsmooth.sh`, `haps2scan.freqsmooth.R`, `haps2scan.freqsmooth.code.R` — fully replaced |
+| **Keep unchanged** | `haps2scan.Apr2025.*`, `concat_Chromosome_Scans.*`, `scan_functions.R`, `XQTL_plotting_functions.R`, `fq2bam.sh`, `bam2bcf2REFALT.sh`, `REFALT2haps.*`, `show_project_layout.sh` |
+| **Keep, not featured** | `plot_freqsmooth_H2.R` (single-estimator H² — available but not in main docs) |
+| **Delete** | `scripts_freqsmooth/` directory (now empty) |
+
+### README — new structure
+
+**Step 5 — Run the scan** (replaces current Step 5)
+
+- **5a** `smooth_haps.sh` — smooth haplotype frequencies and covariances (±smooth-kb)
+- **5b** `freqsmooth_scan.sh` — Wald + H² on smoothed data; depends on 5a
+- **5c** `snp_scan.sh` — SNP scan; depends on 5a, runs in parallel with 5b
+
+Legacy option remains documented:
+- `haps2scan.Apr2025.sh` — raw scan, no smoothing
+
+**Step 6 — Concatenate chromosomes**
+
+Two concat steps — one per output type:
+- `concat_Chromosome_Scans.sh` — hap scan (unchanged)
+- `concat_snp_scans.sh` — SNP scan (new)
+
+**Step 7 — Generate publication figures**
+
+Three plot engines now documented with examples:
+- `plot_pseudoscan.R` — Wald -log10(p) from hap scan
+- `plot_H2_overlay.R` — Falconer + Cutler H² overlaid on one figure
+- `plot_freqsmooth_snp.R` — SNP Wald -log10(p)
+
+**"Putting it all together" template** — updated to cover Steps 5a/5b/5c + both concats + figures.
+The malathion test scripts serve as the worked example.
+
+### SNP table documentation — new subfolder
+
+`helpfiles/snp_tables/README.md` documents:
+- What `FREQ_SNPs.cM.txt.gz` is and where it comes from (founder sequencing)
+- How to run `prep_snp_table.R` to extract population-specific tables (A pop, B pop)
+- That this is a **one-time step per population**, not per experiment
+- Output files: `FREQ_SNPs_Apop.cM.txt.gz`, `FREQ_SNPs_Bpop.cM.txt.gz`
+
+Main README Step 5c just says: "See `helpfiles/snp_tables/` for how SNP tables are prepared."
+
+### Implementation order
+
+1. Create `helpfiles/snp_tables/README.md`
+2. Move scripts from `scripts_freqsmooth/` to `scripts/`
+3. Delete `haps2scan.freqsmooth.*` and empty `scripts_freqsmooth/`
+4. Rewrite `README.md` Steps 5–7 and the "Putting it all together" template
+5. Commit and push; verify `git pull` on cluster works cleanly
 
 ---
 
