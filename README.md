@@ -551,6 +551,104 @@ echo "When done: scp <user>@<cluster>:$(pwd)/${SCAN_DIR}/${SCAN}.tar.gz ."
 
 ---
 
+## Worked example — adding replicates to an existing experiment
+
+You sequenced 3 replicates, ran the pipeline, then sequenced 3 more. Now you
+want to reanalyze with all 6. The existing bams and process directory are still
+on the cluster — you only need to align the new samples, then rerun from Step 3
+onward with all bams combined.
+
+**What changes:**
+- New barcode file for the new samples only (or append to original)
+- `helpfiles/<project>/bams` rebuilt to include old + new bam paths
+- `helpfiles/<project>/hap_params.R` updated: add new sample names to `names_in_bam`
+- `helpfiles/<project>/design.txt` updated: add rows for new samples
+- New scan name (e.g. `myproject_6rep_smooth250`) so you don't overwrite the 3-rep results
+
+**What stays the same:** founder bams, reference genome, SNP table, all scripts.
+
+```bash
+#!/bin/bash
+set -e
+
+PROJECT=myproject
+PARFILE=helpfiles/${PROJECT}/hap_params.R
+DESIGN=helpfiles/${PROJECT}/design.txt
+SCAN=${PROJECT}_6rep_smooth250
+SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
+FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
+
+# ── Step 2: Align NEW samples only ───────────────────────────────────────────
+NEW_BARCODES=helpfiles/${PROJECT}/${PROJECT}_batch2.barcodes.txt
+NN=$(wc -l < ${NEW_BARCODES})
+jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
+    ${NEW_BARCODES} data/raw/${PROJECT}_batch2 data/bam/${PROJECT})
+
+# ── Step 3: Rebuild bams list (old + new) and rerun REFALT ───────────────────
+#   Old bams are already in data/bam/<project>/ from the first run.
+#   After alignment finishes, combine all bam paths into one file.
+find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bams
+cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
+
+jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
+    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bams process/${PROJECT})
+
+# ── Step 4: Rerun haplotype calling with all samples ─────────────────────────
+#   Make sure hap_params.R has been updated with all sample names.
+jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
+    --array=1-5 scripts/REFALT2haps.sh \
+    --parfile ${PARFILE} --dir process/${PROJECT})
+
+# ── Step 5a: Haplotype scan ─────────────────────────────────────────────────
+scan_out=$(bash scripts/run_scan.sh \
+    --design ${DESIGN} \
+    --dir    process/${PROJECT} \
+    --scan   ${SCAN} \
+    --after  ${jid_haps})
+echo "$scan_out"
+jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
+
+# ── Step 5b: SNP scan ───────────────────────────────────────────────────────
+snp_out=$(bash scripts/run_snp_scan.sh \
+    --design    ${DESIGN} \
+    --dir       process/${PROJECT} \
+    --scan      ${SCAN} \
+    --snp-table ${SNP_TABLE} \
+    --founders  ${FOUNDERS})
+echo "$snp_out"
+jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
+
+# ── Step 6: Figures + tarball ────────────────────────────────────────────────
+SCAN_DIR=process/${PROJECT}/${SCAN}
+sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
+    --wrap="module load R/4.2.2 && \
+Rscript scripts/plot_pseudoscan.R \
+    --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
+Rscript scripts/plot_H2_overlay.R \
+    --scan   ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out    ${SCAN_DIR}/${SCAN}.H2.png \
+    --format powerpoint && \
+Rscript scripts/plot_freqsmooth_snp.R \
+    --scan      ${SCAN_DIR}/${SCAN}.snp_scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.snp.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
+cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
+
+echo "All jobs submitted."
+```
+
+The key difference from a fresh run: you only align the new samples (Step 2),
+but Steps 3–4 must rerun with **all** bams because SNP calling and haplotype
+inference are joint across all samples. Use a new scan name so the original
+results are preserved for comparison.
+
+---
+
 ## Directory structure
 
 ```
