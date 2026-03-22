@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=freqsmooth_scan
+#SBATCH --job-name=hap_scan
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
 #SBATCH --cpus-per-task=2
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-Rscript scripts_freqsmooth/freqsmooth_scan.R \
+Rscript scripts/hap_scan.R \
     --chr     "${mychr}"  \
     --dir     "${DIR}/${OUTDIR}" \
     --outdir  "${OUTDIR}" \

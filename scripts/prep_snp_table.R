@@ -11,7 +11,7 @@
 # Column order within each file matches the source file (A1..AB8, AB8..B7).
 #
 # Usage:
-#   Rscript scripts_freqsmooth/prep_snp_table.R /path/to/FREQ_SNPs.cM.txt.gz
+#   Rscript scripts/prep_snp_table.R /path/to/FREQ_SNPs.cM.txt.gz
 #
 # Output files are written to the same directory as the input.
 

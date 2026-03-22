@@ -15,7 +15,7 @@
 # The stabilized Wald test (df=1) and biallelic heritability follow.
 #
 # Usage:
-#   Rscript scripts_freqsmooth/snp_scan.R \
+#   Rscript scripts/snp_scan.R \
 #       --chr chrX --dir process/proj/SCAN_NAME --outdir SCAN_NAME \
 #       --rfile helpfiles/proj/design.txt \
 #       --snp-table FREQ_SNPs.cM.txt.gz \

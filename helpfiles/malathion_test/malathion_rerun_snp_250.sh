@@ -27,7 +27,7 @@ done
 
 jid_snp=$(sbatch --parsable \
     ${AFTER_OPT} \
-    --array=1-5 scripts_freqsmooth/snp_scan.sh \
+    --array=1-5 scripts/snp_scan.sh \
     --rfile     ${DESIGN} \
     --dir       process/${PROJECT} \
     --outdir    ${SCAN} \
@@ -39,7 +39,7 @@ jid_concat=$(sbatch --parsable \
     --dependency=afterok:${jid_snp} \
     -A tdlong_lab -p standard \
     --cpus-per-task=1 --mem-per-cpu=6G \
-    --wrap="bash scripts_freqsmooth/concat_snp_scans.sh ${OUTDIR}")
+    --wrap="bash scripts/concat_snp_scans.sh ${OUTDIR}")
 echo "concat:   $jid_concat"
 
 jid_fig=$(sbatch --parsable \

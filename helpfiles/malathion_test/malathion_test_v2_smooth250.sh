@@ -17,7 +17,7 @@ FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth250.R
 mkdir -p ${OUTDIR}
 
 jid_smooth=$(sbatch --parsable \
-    --array=1-5 scripts_freqsmooth/smooth_haps.sh \
+    --array=1-5 scripts/smooth_haps.sh \
     --rfile     ${DESIGN} \
     --dir       process/${PROJECT} \
     --outdir    ${SCAN} \
@@ -26,7 +26,7 @@ echo "smooth: $jid_smooth"
 
 jid_scan=$(sbatch --parsable \
     --dependency=afterok:${jid_smooth} \
-    --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
+    --array=1-5 scripts/hap_scan.sh \
     --rfile  ${DESIGN} \
     --dir    process/${PROJECT} \
     --outdir ${SCAN})

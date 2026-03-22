@@ -14,7 +14,7 @@ OUTDIR=process/${PROJECT}/${SCAN}
 FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
 
 jid_scan=$(sbatch --parsable \
-    --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
+    --array=1-5 scripts/hap_scan.sh \
     --rfile  ${DESIGN} \
     --dir    process/${PROJECT} \
     --outdir ${SCAN})

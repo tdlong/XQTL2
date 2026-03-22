@@ -23,7 +23,7 @@ FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
 
 # ── Step 5a: smooth haplotype frequencies ─────────────────────────────────────
 jid_smooth=$(sbatch --parsable \
-    --array=1-5 scripts_freqsmooth/smooth_haps.sh \
+    --array=1-5 scripts/smooth_haps.sh \
     --rfile     ${DESIGN}          \
     --dir       process/${PROJECT} \
     --outdir    ${SCAN}            \
@@ -32,7 +32,7 @@ echo "smooth:  $jid_smooth"
 
 # ── Step 5b: haplotype Wald scan ──────────────────────────────────────────────
 jid_scan=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
-    --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
+    --array=1-5 scripts/hap_scan.sh \
     --rfile   ${DESIGN}          \
     --dir     process/${PROJECT} \
     --outdir  ${SCAN})
@@ -40,7 +40,7 @@ echo "scan:    $jid_scan"
 
 # ── Step 5c: SNP scan (add-on; runs in parallel with 5b) ──────────────────────
 jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
-    --array=1-5 scripts_freqsmooth/snp_scan.sh \
+    --array=1-5 scripts/snp_scan.sh \
     --rfile     ${DESIGN}          \
     --dir       process/${PROJECT} \
     --outdir    ${SCAN}            \

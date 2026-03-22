@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-Rscript scripts_freqsmooth/smooth_haps.R \
+Rscript scripts/smooth_haps.R \
     --chr       "${mychr}"    \
     --dir       "${DIR}"      \
     --outdir    "${OUTDIR}"   \

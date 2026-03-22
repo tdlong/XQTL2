@@ -9,7 +9,7 @@
 #   <outdir>/<scan>.meansBySample.<chr>.txt -- smoothed per-founder frequencies
 #
 # Usage:
-#   Rscript scripts_freqsmooth/smooth_haps.R \
+#   Rscript scripts/smooth_haps.R \
 #       --chr chrX --dir process/proj --outdir SCAN_NAME \
 #       --rfile helpfiles/proj/design.txt --smooth-kb 125
 ###############################################################################

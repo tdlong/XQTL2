@@ -3,7 +3,7 @@
 #
 # Merges per-chromosome snp_scan files into a single <name>.snp_scan.txt.
 # Usage:
-#   bash scripts_freqsmooth/concat_snp_scans.sh process/proj/SCAN_NAME
+#   bash scripts/concat_snp_scans.sh process/proj/SCAN_NAME
 
 module load R/4.2.2
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 ###############################################################################
-# freqsmooth_scan.R  —  Step 2 of the freqsmooth pipeline
+# hap_scan.R  —  Step 2 of the freqsmooth pipeline
 #
 # Reads the smoothed RDS from smooth_haps.R. For each window, reconstructs the
 # per-replicate frequency matrices and covariance arrays from the long-format
@@ -9,7 +9,7 @@
 # the same smoothed frequencies as the Wald test.
 #
 # Usage:
-#   Rscript scripts_freqsmooth/freqsmooth_scan.R \
+#   Rscript scripts/hap_scan.R \
 #       --chr chrX --dir process/proj/SCAN_NAME \
 #       --outdir SCAN_NAME --rfile helpfiles/proj/design.txt
 ###############################################################################
