@@ -19,6 +19,8 @@ SCAN_FILES   <- SCAN_FILE
 SCAN_LABELS  <- NULL
 SCAN_COLOURS <- c("#1F78B4")
 THRESHOLD    <- 10
+PEAKS        <- NULL
+GENES        <- NULL
 OUT_FILE     <- file.path(SCAN_DIR, paste0(SCAN, ".wald.png"))
 FORMAT       <- "powerpoint"
 source("scripts/plot_pseudoscan.R")
