@@ -30,7 +30,15 @@ read_chr_files <- function(suffix) {
 }
 
 hap <- read_chr_files("scan")
-snp <- read_chr_files("snp_scan")
+
+snp_files <- file.path(SCAN_DIR, paste0(SCAN, ".snp_scan.", CHRS, ".txt"))
+have_snp  <- all(file.exists(snp_files))
+if (have_snp) {
+  snp <- read_chr_files("snp_scan")
+} else {
+  cat("SNP scan files not yet available — skipping SNP panel\n")
+  snp <- NULL
+}
 
 # ── Cumulative x-axis positions ───────────────────────────────────────────────
 chr_order  <- CHRS
@@ -61,7 +69,7 @@ add_xpos <- function(df) {
 }
 
 hap <- add_xpos(hap)
-snp <- add_xpos(snp)
+if (have_snp) snp <- add_xpos(snp)
 
 # ── Panel builder ─────────────────────────────────────────────────────────────
 make_panel <- function(df, yvar, ylab, threshold = NULL) {
@@ -84,11 +92,17 @@ make_panel <- function(df, yvar, ylab, threshold = NULL) {
 
 # ── Build figure ──────────────────────────────────────────────────────────────
 p1 <- make_panel(hap, "Wald_log10p", "Haplotype Wald  –log₁₀(p)", threshold = 10)
-p2 <- make_panel(snp, "Wald_log10p", "SNP Wald  –log₁₀(p)",       threshold = 10)
 p3 <- make_panel(hap, "Falc_H2",     "Falconer H²")
 p4 <- make_panel(hap, "Cutl_H2",     "Cutler H²")
 
-fig <- (p1 / p2 / p3 / p4) +
+if (have_snp) {
+  p2  <- make_panel(snp, "Wald_log10p", "SNP Wald  –log₁₀(p)", threshold = 10)
+  fig <- (p1 / p2 / p3 / p4)
+} else {
+  fig <- (p1 / p3 / p4)
+}
+
+fig <- fig +
   plot_annotation(
     title = "Malathion resistance — freqsmooth pipeline test (125 kb smoothing)",
     theme = theme(plot.title = element_text(size = 11, face = "bold"))
