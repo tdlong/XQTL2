@@ -11,7 +11,9 @@ publication figures. All scripts are run from the project root on a SLURM cluste
 2. Align reads (`fq2bam.sh`)
 3. Generate allele counts (`bam2bcf2REFALT.sh`)
 4. Call haplotypes (`REFALT2haps.sh`)
-5. Run the scan (`run_scan.sh` — one command does smoothing, scanning, and concatenation)
+5. Run the scan
+   - 5a. Haplotype scan (`run_scan.sh` — one command does smoothing, scanning, and concatenation)
+   - 5b. SNP scan (`run_snp_scan.sh` — optional add-on after 5a)
 6. Generate figures
 
 A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available.
@@ -130,11 +132,11 @@ sbatch --array=1-5 scripts/REFALT2haps.sh \
 
 ---
 
-## Step 5 — Run the scan
+## Step 5a — Haplotype scan
 
 `run_scan.sh` handles everything: smoothing haplotype frequencies, running the
-haplotype-level Wald test and heritability estimates, optionally running a per-SNP
-scan, concatenating chromosomes, and generating figures. One command per scan.
+Wald test and heritability estimates, concatenating chromosomes, and optionally
+generating figures. One command per scan.
 
 ### Design file
 
@@ -184,8 +186,6 @@ dependency chaining.
 | `--dir` | (required) | Project directory (e.g. `process/<project>`) |
 | `--scan` | (required) | Scan name — becomes output subdirectory |
 | `--smooth` | 250 | Smoothing half-window in kb |
-| `--snp-table` | (none) | SNP frequency table — enables SNP scan |
-| `--founders` | (none) | Comma-separated founder names (required with `--snp-table`) |
 | `--figure` | (none) | R figure script to run after concat |
 | `--after` | (none) | SLURM job ID to wait on before starting |
 
@@ -198,21 +198,14 @@ simulations. At 250 kb the founder frequency estimates are stable without
 over-smoothing genuine biological signal. You can override with `--smooth 125`
 or any other value.
 
-### Adding a SNP scan
+### What run_scan.sh submits
 
-To also run a per-SNP Wald test (imputes SNP frequencies from haplotype estimates),
-add `--snp-table` and `--founders`. See `helpfiles/snp_tables/` for how to prepare
-the SNP table.
+For reference, `run_scan.sh` chains these SLURM jobs automatically:
 
-```bash
-bash scripts/run_scan.sh \
-    --design    helpfiles/<project>/design.txt \
-    --dir       process/<project> \
-    --scan      <scan_name> \
-    --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
-    --after     $JID_HAPS
-```
+1. `smooth_haps.sh` — smooth haplotype frequencies and covariances (5 array tasks)
+2. `hap_scan.sh` — Wald test + heritability at each haplotype window (5 array tasks, after #1)
+3. `concat_scans.sh` — merge per-chromosome files and generate Manhattan plots (after #2)
+4. Figure script (after #3; only if `--figure`)
 
 ### Legacy scan (alternative — no smoothing)
 
@@ -226,15 +219,51 @@ sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
 Followed by `bash scripts/concat_scans.sh process/<project>/<scan_name>` to
 concatenate chromosomes.
 
-### What run_scan.sh submits
+---
 
-For reference, `run_scan.sh` chains these SLURM jobs automatically:
+## Step 5b — SNP scan (optional)
 
-1. `smooth_haps.sh` — smooth haplotype frequencies and covariances (5 array tasks)
-2. `hap_scan.sh` — Wald test + heritability at each haplotype window (5 array tasks, after #1)
-3. `snp_scan.sh` — per-SNP Wald test (5 array tasks, after #1, parallel with #2; only if `--snp-table`)
-4. `concat_scans.sh` — merge per-chromosome files (after #2 and/or #3)
-5. Figure script (after #4; only if `--figure`)
+The SNP scan imputes per-SNP allele frequencies from the smoothed haplotype
+estimates produced in Step 5a, then runs a Wald test (df=1) at every SNP. This
+gives much finer genomic resolution than the haplotype scan, at the cost of
+relying on imputation from the founder haplotypes.
+
+The SNP scan uses the same smoothed data as the haplotype scan, so `run_scan.sh`
+(Step 5a) must have already run. Use `--after` to chain it after a running scan,
+or run it any time after the haplotype scan has completed.
+
+### SNP table
+
+The scan requires a table of per-founder allele frequencies at every SNP. This is
+a one-time preparation step per population — see `helpfiles/snp_tables/` for
+details.
+
+### Run the SNP scan
+
+```bash
+bash scripts/run_snp_scan.sh \
+    --design    helpfiles/<project>/design.txt \
+    --dir       process/<project> \
+    --scan      <scan_name> \
+    --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
+    --figure    helpfiles/<project>/snp_figure.R
+```
+
+Use the same `--scan` name as Step 5a — the SNP scan output goes into the same
+directory alongside the haplotype scan results.
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--design` | (required) | Path to design file |
+| `--dir` | (required) | Project directory |
+| `--scan` | (required) | Scan name (same as Step 5a) |
+| `--snp-table` | (required) | SNP frequency table |
+| `--founders` | (required) | Comma-separated founder names matching SNP table columns |
+| `--figure` | (none) | R figure script to run after concat |
+| `--after` | (none) | SLURM job ID to wait on (e.g. from run_scan.sh) |
 
 ---
 
@@ -419,16 +448,24 @@ jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
     --parfile ${PARFILE} --dir process/${PROJECT})
 echo "haps:   $jid_haps"
 
-# ── Step 5: scan (one call per design — does smooth + scan + concat + figure) ─
+# ── Step 5a: haplotype scan (one call per design) ─────────────────────────────
 for i in "${!DESIGNS[@]}"; do
     bash scripts/run_scan.sh \
+        --design ${DESIGNS[$i]} \
+        --dir    process/${PROJECT} \
+        --scan   ${OUTDIRS[$i]} \
+        --figure ${FIGURES[$i]} \
+        --after  ${jid_haps}
+done
+
+# ── Step 5b: SNP scan (one call per design, after hap scan completes) ─────────
+for i in "${!DESIGNS[@]}"; do
+    bash scripts/run_snp_scan.sh \
         --design    ${DESIGNS[$i]} \
         --dir       process/${PROJECT} \
         --scan      ${OUTDIRS[$i]} \
         --snp-table ${SNP_TABLE} \
-        --founders  ${FOUNDERS} \
-        --figure    ${FIGURES[$i]} \
-        --after     ${jid_haps}
+        --founders  ${FOUNDERS}
 done
 ```
 
