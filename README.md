@@ -11,15 +11,10 @@ publication figures. All scripts are run from the project root on a SLURM cluste
 2. Align reads (`fq2bam.sh`)
 3. Generate allele counts (`bam2bcf2REFALT.sh`)
 4. Call haplotypes (`REFALT2haps.sh`)
-5. Run the scan
-   - 5a. Smooth haplotype frequencies (`smooth_haps.sh`)
-   - 5b. Haplotype scan — Wald test + heritability (`hap_scan.sh`)
-   - 5c. SNP scan — per-SNP Wald test (`snp_scan.sh`)
-6. Concatenate chromosomes
-7. Generate figures
+5. Run the scan (`run_scan.sh` — one command does smoothing, scanning, and concatenation)
+6. Generate figures
 
-A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available as an
-alternative to Steps 5a–5c.
+A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available.
 
 ---
 
@@ -137,6 +132,10 @@ sbatch --array=1-5 scripts/REFALT2haps.sh \
 
 ## Step 5 — Run the scan
 
+`run_scan.sh` handles everything: smoothing haplotype frequencies, running the
+haplotype-level Wald test and heritability estimates, optionally running a per-SNP
+scan, concatenating chromosomes, and generating figures. One command per scan.
+
 ### Design file
 
 Create a plain text table with one row per sample. Required columns:
@@ -164,56 +163,55 @@ design <- data.frame(
 write.table(design, "helpfiles/<project>/design.txt")
 ```
 
-### 5a — Smooth haplotype frequencies
-
-Applies a running-mean smoother (half-window = `--smooth-kb`) to haplotype
-frequencies and covariance matrices. All downstream steps use these smoothed
-estimates.
+### Run the scan
 
 ```bash
-sbatch --array=1-5 scripts/smooth_haps.sh \
-    --rfile     helpfiles/<project>/design.txt \
+bash scripts/run_scan.sh \
+    --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
-    --outdir    <scan_name> \
-    --smooth-kb 125
+    --scan      <scan_name> \
+    --after     $JID_HAPS
 ```
 
-### 5b — Haplotype scan (Wald test + heritability)
+That's it. This submits all SLURM jobs (smooth, hap scan, concat) with proper
+dependency chaining.
 
-Runs a stabilized Wald test (eigenvalue-regularized) and two heritability
-estimators (Falconer and Cutler) at each haplotype window.
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--design` | (required) | Path to design file |
+| `--dir` | (required) | Project directory (e.g. `process/<project>`) |
+| `--scan` | (required) | Scan name — becomes output subdirectory |
+| `--smooth` | 250 | Smoothing half-window in kb |
+| `--snp-table` | (none) | SNP frequency table — enables SNP scan |
+| `--founders` | (none) | Comma-separated founder names (required with `--snp-table`) |
+| `--figure` | (none) | R figure script to run after concat |
+| `--after` | (none) | SLURM job ID to wait on before starting |
+
+### Smoothing window
+
+The default smoothing window is 250 kb. This was chosen by comparing 125 kb and
+250 kb on real data (malathion experiment): plotting smoothed founder haplotype
+frequencies versus genomic position and comparing against expectations from
+simulations. At 250 kb the founder frequency estimates are stable without
+over-smoothing genuine biological signal. You can override with `--smooth 125`
+or any other value.
+
+### Adding a SNP scan
+
+To also run a per-SNP Wald test (imputes SNP frequencies from haplotype estimates),
+add `--snp-table` and `--founders`. See `helpfiles/snp_tables/` for how to prepare
+the SNP table.
 
 ```bash
-sbatch --dependency=afterok:$JID_SMOOTH --array=1-5 scripts/hap_scan.sh \
-    --rfile   helpfiles/<project>/design.txt \
-    --dir     process/<project> \
-    --outdir  <scan_name>
-```
-
-### 5c — SNP scan (optional, runs in parallel with 5b)
-
-Imputes per-SNP allele frequencies from smoothed haplotype estimates, then runs a
-Wald test (df=1) at every SNP. Requires a pre-built SNP table — see
-`helpfiles/snp_tables/` for how to prepare one.
-
-```bash
-sbatch --dependency=afterok:$JID_SMOOTH --array=1-5 scripts/snp_scan.sh \
-    --rfile     helpfiles/<project>/design.txt \
+bash scripts/run_scan.sh \
+    --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
-    --outdir    <scan_name> \
+    --scan      <scan_name> \
     --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founders  A1,A2,A3,A4,A5,A6,A7,AB8
-```
-
-### Per-chromosome outputs
-
-Each scan step writes one file per chromosome:
-
-```
-process/<project>/<scan_name>/
-    <scan_name>.scan.<chr>.txt              (from hap_scan)
-    <scan_name>.meansBySample.<chr>.txt     (from smooth_haps)
-    <scan_name>.snp_scan.<chr>.txt          (from snp_scan)
+    --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
+    --after     $JID_HAPS
 ```
 
 ### Legacy scan (alternative — no smoothing)
@@ -225,30 +223,22 @@ sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
     --outdir <scan_name>
 ```
 
----
+Followed by `bash scripts/concat_scans.sh process/<project>/<scan_name>` to
+concatenate chromosomes.
 
-## Step 6 — Concatenate chromosomes
+### What run_scan.sh submits
 
-### Haplotype scan
+For reference, `run_scan.sh` chains these SLURM jobs automatically:
 
-```bash
-bash scripts/concat_Chromosome_Scans.sh process/<project>/<scan_name>
-```
-
-Merges per-chromosome scan and meansBySample files, generates quick-look Manhattan plots,
-and bundles everything into `<scan_name>.tar.gz`.
-
-### SNP scan
-
-```bash
-bash scripts/concat_snp_scans.sh process/<project>/<scan_name>
-```
-
-Merges per-chromosome `snp_scan` files into `<scan_name>.snp_scan.txt`.
+1. `smooth_haps.sh` — smooth haplotype frequencies and covariances (5 array tasks)
+2. `hap_scan.sh` — Wald test + heritability at each haplotype window (5 array tasks, after #1)
+3. `snp_scan.sh` — per-SNP Wald test (5 array tasks, after #1, parallel with #2; only if `--snp-table`)
+4. `concat_scans.sh` — merge per-chromosome files (after #2 and/or #3)
+5. Figure script (after #4; only if `--figure`)
 
 ---
 
-## Step 7 — Generate publication figures
+## Step 6 — Generate publication figures
 
 Three plot engines are available, each driven by a small R script that sets parameters
 then `source()`s the engine. Save figure scripts to `helpfiles/<project>/`.
@@ -346,9 +336,9 @@ PEAKS <- data.frame(
 
 ---
 
-## Step 8 — Download and explore results
+## Step 7 — Download and explore results
 
-The haplotype concat (Step 6) bundles scan tables and quick-look figures into a tarball:
+The concat step bundles scan tables and quick-look figures into a tarball:
 
 ```bash
 scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
@@ -387,8 +377,7 @@ A1 / A2
 ## Putting it all together
 
 For a new experiment, copy the block below to `scripts_oneoffs/<project>_pipeline.sh`,
-fill in the variables, and run it. Each step is submitted as a SLURM job with
-`afterok` dependencies so the whole pipeline runs unattended.
+fill in the variables, and run it. The whole pipeline runs unattended.
 
 ```bash
 #!/bin/bash
@@ -397,23 +386,22 @@ fill in the variables, and run it. Each step is submitted as a SLURM job with
 PROJECT=<project>
 BARCODES=helpfiles/${PROJECT}/${PROJECT}.barcodes.txt
 PARFILE=helpfiles/${PROJECT}/hap_params.R
-SMOOTH_KB=125
 FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
 SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
 
 # One entry per scan (sex, treatment, etc.)
 DESIGNS=(  helpfiles/${PROJECT}/design_male.txt   helpfiles/${PROJECT}/design_female.txt )
-OUTDIRS=(  ${PROJECT}_M_smooth${SMOOTH_KB}        ${PROJECT}_F_smooth${SMOOTH_KB}        )
+OUTDIRS=(  ${PROJECT}_M_smooth250                 ${PROJECT}_F_smooth250                 )
 
-# Figure scripts — run after all scans are concatenated
-FIGURES=(  helpfiles/${PROJECT}/${PROJECT}_MF.R )
+# Figure scripts — run after each scan is concatenated
+FIGURES=(  helpfiles/${PROJECT}/${PROJECT}_M.R    helpfiles/${PROJECT}/${PROJECT}_F.R    )
 
 # ── Step 2: align reads ───────────────────────────────────────────────────────
 NN=$(wc -l < ${BARCODES})
 mkdir -p data/bam/${PROJECT}
 jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
     ${BARCODES} data/raw/${PROJECT} data/bam/${PROJECT})
-echo "fq2bam:      $jid_bam"
+echo "fq2bam: $jid_bam"
 
 # ── Step 3: REFALT counts ─────────────────────────────────────────────────────
 mkdir -p process/${PROJECT}
@@ -423,61 +411,24 @@ cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
     scripts/bam2bcf2REFALT.sh \
     helpfiles/${PROJECT}/bams process/${PROJECT})
-echo "REFALT:      $jid_refalt"
+echo "REFALT: $jid_refalt"
 
 # ── Step 4: haplotypes ────────────────────────────────────────────────────────
 jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
     --array=1-5 scripts/REFALT2haps.sh \
     --parfile ${PARFILE} --dir process/${PROJECT})
-echo "haps:        $jid_haps"
+echo "haps:   $jid_haps"
 
-# ── Steps 5–7: scan + concat + figures (one set per design) ──────────────────
-jid_concats=""
+# ── Step 5: scan (one call per design — does smooth + scan + concat + figure) ─
 for i in "${!DESIGNS[@]}"; do
-    design=${DESIGNS[$i]}
-    outdir=${OUTDIRS[$i]}
-
-    # 5a: smooth
-    jid_smooth=$(sbatch --parsable --dependency=afterok:${jid_haps} \
-        --array=1-5 scripts/smooth_haps.sh \
-        --rfile ${design} --dir process/${PROJECT} \
-        --outdir ${outdir} --smooth-kb ${SMOOTH_KB})
-    echo "smooth ${outdir}: $jid_smooth"
-
-    # 5b: haplotype scan
-    jid_scan=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
-        --array=1-5 scripts/hap_scan.sh \
-        --rfile ${design} --dir process/${PROJECT} --outdir ${outdir})
-    echo "hap_scan ${outdir}: $jid_scan"
-
-    # 5c: SNP scan (parallel with 5b)
-    jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
-        --array=1-5 scripts/snp_scan.sh \
-        --rfile ${design} --dir process/${PROJECT} --outdir ${outdir} \
-        --snp-table ${SNP_TABLE} --founders ${FOUNDERS})
-    echo "snp_scan ${outdir}: $jid_snp"
-
-    # 6: concatenate
-    jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan} \
-        -A tdlong_lab -p standard --mem=10G \
-        --wrap="bash scripts/concat_Chromosome_Scans.sh process/${PROJECT}/${outdir}")
-    echo "concat ${outdir}: $jid_concat"
-
-    jid_snp_concat=$(sbatch --parsable --dependency=afterok:${jid_snp} \
-        -A tdlong_lab -p standard --mem=10G \
-        --wrap="bash scripts/concat_snp_scans.sh process/${PROJECT}/${outdir}")
-    echo "snp_concat ${outdir}: $jid_snp_concat"
-
-    jid_concats="${jid_concats}:${jid_concat}:${jid_snp_concat}"
-done
-
-# ── Step 7: figures (after all concats finish) ────────────────────────────────
-dep="afterok${jid_concats}"
-for fig in "${FIGURES[@]}"; do
-    jid_fig=$(sbatch --parsable --dependency=${dep} \
-        -A tdlong_lab -p standard --mem=10G \
-        --wrap="module load R/4.2.2 && Rscript ${fig}")
-    echo "figure ${fig}: $jid_fig"
+    bash scripts/run_scan.sh \
+        --design    ${DESIGNS[$i]} \
+        --dir       process/${PROJECT} \
+        --scan      ${OUTDIRS[$i]} \
+        --snp-table ${SNP_TABLE} \
+        --founders  ${FOUNDERS} \
+        --figure    ${FIGURES[$i]} \
+        --after     ${jid_haps}
 done
 ```
 
@@ -501,7 +452,7 @@ XQTL2/
 │       ├── bams                          (Step 3)
 │       ├── hap_params.R                  (Step 4)
 │       ├── design.txt                    (Step 5)
-│       └── <figure_name>.R              (Step 7)
+│       └── <figure_name>.R              (Step 6)
 ├── data/
 │   ├── raw/<project>/                    (Step 1 — raw reads)
 │   └── bam/<project>/                    (Step 2 — aligned bams)
@@ -511,11 +462,8 @@ XQTL2/
 │       ├── RefAlt.<chr>.txt              (Step 3)
 │       ├── R.haps.<chr>.rds              (Step 4 — SNP table)
 │       ├── R.haps.<chr>.out.rds          (Step 4 — haplotype estimates)
-│       └── <scan_name>/                  (Steps 5–6)
-│           ├── <scan_name>.scan.<chr>.txt
-│           ├── <scan_name>.meansBySample.<chr>.txt
-│           ├── <scan_name>.snp_scan.<chr>.txt
-│           ├── <scan_name>.scan.txt          (after concat)
+│       └── <scan_name>/                  (Step 5)
+│           ├── <scan_name>.scan.txt
 │           ├── <scan_name>.meansBySample.txt
 │           ├── <scan_name>.snp_scan.txt
 │           └── <scan_name>.tar.gz
