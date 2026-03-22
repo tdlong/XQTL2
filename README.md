@@ -65,9 +65,9 @@ gain in requesting less.
 | `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
 | `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
-| concat | 5a/5b | standard | 1 | 3G | 10 min | 436 MB / 19s wall |
-| snp_concat | 5b | standard | 1 | 3G | 10 min | 413 MB / 21s wall |
-| figures | 6 | standard | 1 | 3G | 10 min | 982 MB / 58s wall |
+| concat | 5a/5b | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
+| snp_concat | 5b | standard | 1 | 3G | 1 hr | 413 MB / 21s wall |
+| figures | 6 | standard | 1 | 3G | 1 hr | 982 MB / 58s wall |
 
 ---
 
@@ -527,7 +527,7 @@ jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 # ── Step 6: Figures + final tarball (runs after all scans finish) ─────────────
 SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=0:10:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
     --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
