@@ -14,7 +14,7 @@ root directory. You submit one script and walk away.
 4. Call haplotypes (`REFALT2haps.sh`)
 5. Scan
    - 5a. Haplotype scan (`run_scan.sh` — smooth, Wald test, H², concat)
-   - 5b. SNP scan (`run_snp_scan.sh` — optional, finer resolution)
+   - 5b. SNP scan (`run_snp_scan.sh` — optional, imputed SNP-level test)
 6. Generate figures (Rscript commands, submitted via sbatch)
 7. Download results
 
@@ -250,9 +250,10 @@ concatenate chromosomes.
 ## Step 5b — SNP scan (optional)
 
 The SNP scan imputes per-SNP allele frequencies from the smoothed haplotype
-estimates produced in Step 5a, then runs a Wald test (df=1) at every SNP. This
-gives much finer genomic resolution than the haplotype scan, at the cost of
-relying on imputation from the founder haplotypes.
+estimates produced in Step 5a, then runs a Wald test (df=1) at every SNP.
+This tests at individual SNP positions rather than haplotype windows, but
+the signal comes from the same smoothed haplotype estimates — it is not
+independent of the haplotype scan.
 
 The SNP scan uses the same smoothed data as the haplotype scan, so `run_scan.sh`
 (Step 5a) must have already run. Use `--after` to chain it after a running scan,
@@ -398,14 +399,24 @@ Rscript scripts/plot_pseudoscan.R \
 
 ## Step 7 — Download results
 
-The concat step bundles scan tables and Manhattan plots into a tarball.
-Publication figures from Step 6 are also in the scan directory. Download
-everything:
+The figure step (Step 6) bundles everything into a single tarball at the end.
 
 ```bash
-scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/*.tar.gz .
-scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/*.png .
+scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
+tar xzf <scan_name>.tar.gz
 ```
+
+**What's in the tarball** (all `.txt` and `.png` files in the scan directory):
+
+| File | Contents |
+|------|----------|
+| `<scan>.scan.txt` | Haplotype scan: Wald -log10(p), Falconer H², Cutler H² per window |
+| `<scan>.meansBySample.txt` | Smoothed founder frequencies per sample (QC) |
+| `<scan>.snp_scan.txt` | SNP-level Wald -log10(p) (if SNP scan was run) |
+| `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
+| `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
+| `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan (if SNP scan was run) |
+| `<scan>.5panel.*.png`, `<scan>.Manhattan.png` | Quick-look plots from concat step |
 
 ### Interactive exploration (optional)
 
@@ -490,31 +501,29 @@ snp_out=$(bash scripts/run_snp_scan.sh \
 echo "$snp_out"
 jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 
-# ── Step 6: Figures (submitted as SLURM jobs, run after scans finish) ────────
+# ── Step 6: Figures + final tarball (runs after all scans finish) ─────────────
 SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
     -A tdlong_lab -p standard --mem=8G --time=0:30:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.wald.png \
-    --format powerpoint --threshold 10 && \
+    --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
 Rscript scripts/plot_H2_overlay.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.H2.png \
+    --scan   ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out    ${SCAN_DIR}/${SCAN}.H2.png \
     --format powerpoint && \
 Rscript scripts/plot_freqsmooth_snp.R \
-    --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.snp.wald.png \
-    --format powerpoint --threshold 10"
+    --scan      ${SCAN_DIR}/${SCAN}.snp_scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.snp.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
+cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
 
 echo "All jobs submitted."
-```
-
-When it finishes, download:
-```bash
-scp <user>@<cluster>:<project_path>/process/<project>/<scan>/*.png .
-scp <user>@<cluster>:<project_path>/process/<project>/<scan>/*.tar.gz .
+echo "When done: scp <user>@<cluster>:$(pwd)/${SCAN_DIR}/${SCAN}.tar.gz ."
 ```
 
 ---

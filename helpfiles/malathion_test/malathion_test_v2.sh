@@ -32,21 +32,24 @@ snp_out=$(bash scripts/run_snp_scan.sh \
 echo "$snp_out"
 jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 
-# ── Figures (run after both scans finish) ────────────────────────────────────
+# ── Figures + tarball (run after both scans finish) ──────────────────────────
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
     -A tdlong_lab -p standard --mem=8G --time=0:30:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.wald.png \
-    --format powerpoint --threshold 10 && \
+    --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
 Rscript scripts/plot_H2_overlay.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.H2.png \
+    --scan   ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out    ${SCAN_DIR}/${SCAN}.H2.png \
     --format powerpoint && \
 Rscript scripts/plot_freqsmooth_snp.R \
-    --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.snp.wald.png \
-    --format powerpoint --threshold 10"
+    --scan      ${SCAN_DIR}/${SCAN}.snp_scan.txt \
+    --out       ${SCAN_DIR}/${SCAN}.snp.wald.png \
+    --format    powerpoint \
+    --threshold 10 && \
+cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
 
 echo "All jobs submitted."
