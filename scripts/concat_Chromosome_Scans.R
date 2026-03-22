@@ -21,11 +21,8 @@ df1 = files %>%
   group_by(chr) %>%
   arrange(chr, pos) %>%
   mutate(
-    Wald_log10p = slide_dbl(Wald_log10p, mean, .before = 5, .after = 5),
-    Pseu_log10p = slide_dbl(Pseu_log10p, mean, .before = 5, .after = 5),
-    Falc_H2 = slide_dbl(Falc_H2, mean, .before = 5, .after = 5),
-    Cutl_H2 = slide_dbl(Cutl_H2, mean, .before = 5, .after = 5),
-    avg.var = slide_dbl(avg.var, mean, .before = 5, .after = 5)
+    across(any_of(c("Wald_log10p", "Pseu_log10p", "Falc_H2", "Cutl_H2", "avg.var")),
+           ~ slide_dbl(.x, mean, .before = 5, .after = 5))
   ) %>%
   ungroup()
 

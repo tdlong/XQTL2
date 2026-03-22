@@ -30,7 +30,7 @@ jid_smooth=$(sbatch --parsable \
     --smooth-kb ${SMOOTH_KB})
 echo "smooth:  $jid_smooth"
 
-# ── Step 5b: Wald scan on smoothed frequencies ────────────────────────────────
+# ── Step 5b: haplotype Wald scan ──────────────────────────────────────────────
 jid_scan=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
     --rfile   ${DESIGN}          \
@@ -38,7 +38,7 @@ jid_scan=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     --outdir  ${SCAN})
 echo "scan:    $jid_scan"
 
-# ── Step 5c: SNP scan (runs in parallel with 5b) ──────────────────────────────
+# ── Step 5c: SNP scan (add-on; runs in parallel with 5b) ──────────────────────
 jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     --array=1-5 scripts_freqsmooth/snp_scan.sh \
     --rfile     ${DESIGN}          \
@@ -48,13 +48,14 @@ jid_snp=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     --founders  ${FOUNDERS})
 echo "snp:     $jid_snp"
 
-# ── Step 6: concatenate chromosomes ──────────────────────────────────────────
-jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan}:${jid_snp} \
+# ── Step 6: concatenate haplotype scan chromosomes ────────────────────────────
+# Depends only on the haplotype scan — SNP scan is independent
+jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan} \
     -A tdlong_lab -p standard --mem=10G \
     --wrap="bash scripts/concat_Chromosome_Scans.sh process/${PROJECT}/${SCAN}")
 echo "concat:  $jid_concat"
 
-# ── Step 7: publication figure ────────────────────────────────────────────────
+# ── Step 7: publication figure (Wald + Falconer H2 + Cutler H2) ───────────────
 jid_fig=$(sbatch --parsable --dependency=afterok:${jid_concat} \
     -A tdlong_lab -p standard --mem=10G \
     --wrap="module load R/4.2.2 && Rscript ${FIGURE}")
