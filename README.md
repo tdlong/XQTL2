@@ -269,34 +269,63 @@ directory alongside the haplotype scan results.
 
 ## Step 6 — Generate publication figures
 
-Three plot engines are available, each driven by a small R script that sets parameters
-then `source()`s the engine. Save figure scripts to `helpfiles/<project>/`.
+Each figure is controlled by a short R parameter file that you write. The
+parameter file sets variables (input paths, colors, output path, etc.) and then
+calls `source()` on one of the plot engines in `scripts/`. You run the parameter
+file with `Rscript` and it produces the figure.
 
-### Wald scan — `plot_pseudoscan.R`
+### How it works
 
-5-panel -log10(p) line plot from the haplotype scan.
+1. Write a parameter file, e.g. `helpfiles/<project>/wald_figure.R`
+2. Run it: `Rscript helpfiles/<project>/wald_figure.R`
+3. The plot engine reads the scan data, makes the figure, and saves the PNG
+
+You can pass the parameter file to `run_scan.sh --figure` or
+`run_snp_scan.sh --figure` so that the figure is generated automatically
+as part of the pipeline.
+
+### Plot engines
+
+Three plot engines are available:
+
+**`scripts/plot_pseudoscan.R`** — 5-panel Wald -log10(p) line plot from the haplotype scan.
+
+**`scripts/plot_H2_overlay.R`** — 5-panel Falconer + Cutler heritability overlay from the haplotype scan.
+
+**`scripts/plot_freqsmooth_snp.R`** — 5-panel Wald -log10(p) dot plot from the SNP scan.
+
+### Example parameter files
+
+**Haplotype Wald scan** — save as `helpfiles/<project>/wald_figure.R`:
 
 ```r
+# Inputs
 SCAN_FILES   <- c("process/<project>/<scan_name>/<scan_name>.scan.txt")
 SCAN_COLOURS <- c("#1F78B4")
 SCAN_LABELS  <- NULL       # NULL uses the file basename
-THRESHOLD    <- 10         # dashed horizontal line
-OUT_FILE     <- "process/<project>/<scan_name>/<figure_name>.png"
-FORMAT       <- "powerpoint"
+THRESHOLD    <- 10         # dashed horizontal line at this -log10(p)
+
+# Output
+OUT_FILE     <- "process/<project>/<scan_name>/wald.png"
+FORMAT       <- "powerpoint"    # sets width and DPI (see table below)
+
+# Optional annotations (set to NULL to skip)
 PEAKS        <- NULL
 GENES        <- NULL
 
+# Run the plot engine
 source("scripts/plot_pseudoscan.R")
 ```
 
-Two-scan overlay (e.g. males and females):
+**Two-scan overlay** (e.g. male vs female) — save as `helpfiles/<project>/MF_overlay.R`:
 
 ```r
-SCAN_FILES   <- c("path/to/<scan_M>.scan.txt", "path/to/<scan_F>.scan.txt")
+SCAN_FILES   <- c("process/<project>/<scan_M>/<scan_M>.scan.txt",
+                   "process/<project>/<scan_F>/<scan_F>.scan.txt")
 SCAN_COLOURS <- c("#1F78B4", "#E31A1C")
 SCAN_LABELS  <- c("Male", "Female")
 THRESHOLD    <- 10
-OUT_FILE     <- "path/to/overlay.png"
+OUT_FILE     <- "process/<project>/MF_overlay.png"
 FORMAT       <- "powerpoint"
 PEAKS        <- NULL
 GENES        <- NULL
@@ -304,25 +333,21 @@ GENES        <- NULL
 source("scripts/plot_pseudoscan.R")
 ```
 
-### Heritability overlay — `plot_H2_overlay.R`
-
-5-panel line plot overlaying Falconer H2 and Cutler H2 from the haplotype scan.
+**Heritability overlay** — save as `helpfiles/<project>/H2_figure.R`:
 
 ```r
 SCAN_FILE <- "process/<project>/<scan_name>/<scan_name>.scan.txt"
-OUT_FILE  <- "process/<project>/<scan_name>/<figure_name>.H2.png"
+OUT_FILE  <- "process/<project>/<scan_name>/H2.png"
 FORMAT    <- "powerpoint"
 
 source("scripts/plot_H2_overlay.R")
 ```
 
-### SNP scan — `plot_freqsmooth_snp.R`
-
-5-panel -log10(p) dot plot from the SNP scan.
+**SNP scan** — save as `helpfiles/<project>/snp_figure.R`:
 
 ```r
 SCAN_FILE  <- "process/<project>/<scan_name>/<scan_name>.snp_scan.txt"
-OUT_FILE   <- "process/<project>/<scan_name>/<figure_name>.snp.png"
+OUT_FILE   <- "process/<project>/<scan_name>/snp_wald.png"
 FORMAT     <- "powerpoint"
 THRESHOLD  <- 10
 
@@ -331,9 +356,19 @@ source("scripts/plot_freqsmooth_snp.R")
 
 ### Run a figure script
 
+On the cluster:
+
 ```bash
 module load R/4.2.2
-Rscript helpfiles/<project>/<figure_name>.R
+Rscript helpfiles/<project>/wald_figure.R
+```
+
+Or pass it to the scan driver so it runs automatically after concat:
+
+```bash
+bash scripts/run_scan.sh \
+    --design ... --dir ... --scan ... \
+    --figure helpfiles/<project>/wald_figure.R
 ```
 
 ### FORMAT options
@@ -348,7 +383,10 @@ Rscript helpfiles/<project>/<figure_name>.R
 | `web` | 7.0 in | 150 | web/HTML |
 | `email` | 6.0 in | 100 | email preview |
 
-Gene and peak annotations use Mb coordinates:
+### Optional annotations
+
+Gene and peak labels use Mb coordinates. Add these to any parameter file
+that uses `plot_pseudoscan.R`:
 
 ```r
 GENES <- data.frame(
