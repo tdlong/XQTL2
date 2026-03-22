@@ -65,7 +65,7 @@ gain in requesting less.
 | `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
 | `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
-| concat | 5a/5b | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
+| concat | 5a | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
 | snp_concat | 5b | standard | 1 | 3G | 1 hr | 413 MB / 21s wall |
 | figures | 6 | standard | 1 | 3G | 1 hr | 982 MB / 58s wall |
 
