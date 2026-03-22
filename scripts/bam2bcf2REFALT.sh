@@ -2,7 +2,8 @@
 #SBATCH --job-name=callSNPs
 #SBATCH -A tdlong_lab        ## account to charge 
 #SBATCH -p standard          ## partition/queue name
-#SBATCH --cpus-per-task=2 
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=6G
 #SBATCH --array=1-5
 #SBATCH --time=5-00:00:00
 

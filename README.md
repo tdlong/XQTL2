@@ -48,19 +48,24 @@ A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available.
 
 ### SLURM resource requirements
 
-The cluster's standard partition provides max 6 GB per core. Use `--mem-per-cpu`
-(not `--mem`) to request memory. See `Slurm.md` for partition details.
+The cluster's standard partition provides max 6 GB per core; highmem provides
+10 GB per core. Always use `--mem-per-cpu` (not `--mem`). See `Slurm.md` for
+full partition details.
 
-| Script | Step | Partition | CPUs | Mem/CPU | Time | Array | Notes |
-|--------|------|-----------|------|---------|------|-------|-------|
-| `fq2bam.sh` | 2 | standard | 4 | (default) | (default) | 1-N | N = number of samples |
-| `bam2bcf2REFALT.sh` | 3 | standard | 2 | (default) | 5 days | 1-5 | one per chromosome |
-| `REFALT2haps.sh` | 4 | highmem | 1 | 10G | (default) | 1-5 | needs highmem for large hap matrices |
-| `smooth_haps.sh` | 5a | standard | 2 | 6G | 2 hr | 1-5 | most memory-intensive scan step |
-| `hap_scan.sh` | 5a | standard | 2 | 1G | 4 hr | 1-5 | lightweight per-window test |
-| `snp_scan.sh` | 5b | standard | 1 | 3G | 8 hr | 1-5 | loads full SNP table per chromosome |
-| `concat_scans.sh` | 5a/5b | standard | 1 | 6G | 1 hr | — | merges chromosomes, builds tarball |
-| figure scripts | 6 | standard | 1 | 6G | 30 min | — | R plotting, one job for all figures |
+Every script explicitly requests memory. The scan-step resources were set from
+`seff` profiling on the malathion test dataset (profiled peak memory shown
+where measured).
+
+| Script | Step | Partition | CPUs | Mem/CPU | Total mem | Time | Profiled peak | Notes |
+|--------|------|-----------|------|---------|-----------|------|---------------|-------|
+| `fq2bam.sh` | 2 | standard | 4 | 6G | 24G | 1 day | — | BWA + `java -Xmx20g` needs ~20G |
+| `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 12G | 5 days | — | bcftools mpileup, I/O-bound |
+| `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 10G | (default) | — | large haplotype matrices |
+| `smooth_haps.sh` | 5a | standard | 2 | 6G | 12G | 2 hr | — | most memory-intensive scan step |
+| `hap_scan.sh` | 5a | standard | 2 | 1G | 2G | 4 hr | 346 MB | vectorized Wald + H² |
+| `snp_scan.sh` | 5b | standard | 1 | 3G | 3G | 8 hr | 726 MB | loads SNP table per chromosome |
+| concat | 5a/5b | standard | 1 | 6G | 6G | 1 hr | — | merges chromosomes, builds tarball |
+| figures | 6 | standard | 1 | 6G | 6G | 30 min | — | R plotting |
 
 ---
 

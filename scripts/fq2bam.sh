@@ -2,7 +2,9 @@
 #SBATCH --job-name=bwa
 #SBATCH -A tdlong_lab        ## account to charge 
 #SBATCH -p standard          ## partition/queue name
-#SBATCH --cpus-per-task=4 
+#SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=6G
+#SBATCH --time=1-00:00:00
 
 module load bwa/0.7.17
 module load samtools/1.10
