@@ -9,7 +9,7 @@
 
 library(tidyverse)
 
-MEANS_FILE <- "MALATHION_TEST_v2_smooth125.meansBySample.txt"
+MEANS_FILE <- "MALATHION_TEST_v2_smooth125.hap/MALATHION_TEST_v2_smooth125.meansBySample.txt"
 FOUNDER    <- "A3"
 CHR        <- "chr3L"
 OUT_FILE   <- paste0("qc_means_", FOUNDER, "_", CHR, ".png")
