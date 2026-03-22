@@ -4,6 +4,7 @@
 #SBATCH --mem-per-cpu=10G
 #SBATCH -p highmem
 #SBATCH --cpus-per-task=1
+#SBATCH --time=1-00:00:00
 #SBATCH --array=1-5
 
 module load R/4.2.2
