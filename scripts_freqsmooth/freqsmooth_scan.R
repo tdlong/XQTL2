@@ -133,7 +133,7 @@ scan_results <- freq_smoothed %>%
 
     tibble(chr         = key$CHROM,
            pos         = key$pos,
-           Wald_log10p = -log10(exp(pval)),
+           Wald_log10p = -log10(pval),
            Falc_H2     = h2$Falconer_H2,
            Cutl_H2     = h2$Cutler_H2)
   }) %>%
