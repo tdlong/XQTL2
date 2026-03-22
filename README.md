@@ -62,9 +62,9 @@ gain in requesting less.
 | `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | not profiled; `bwa -t 4` + `java -Xmx20g` |
 | `bam2bcf2REFALT.sh` | 3 | standard | 1 | 6G | 5 days | not profiled; bcftools mpileup, I/O-bound |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | not profiled; large haplotype matrices |
-| `smooth_haps.sh` | 5a | standard | 1 | 3G | 30 min | 909 MB / 17s wall |
-| `hap_scan.sh` | 5a | standard | 1 | 3G | 30 min | 307 MB / 5:12 wall |
-| `snp_scan.sh` | 5b | standard | 1 | 3G | 30 min | 732 MB / 5:25 wall |
+| `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
+| `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
+| `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
 | concat | 5a/5b | standard | 1 | 3G | 10 min | 436 MB / 19s wall |
 | snp_concat | 5b | standard | 1 | 3G | 10 min | 413 MB / 21s wall |
 | figures | 6 | standard | 1 | 3G | 10 min | 982 MB / 58s wall |
