@@ -391,12 +391,12 @@ Steps 5b and 5c both depend on 5a but are independent of each other, so they run
 
 After running the test pipeline on malathion data, compare against the current pipeline output:
 
-- [ ] Manhattan plots show the same major peaks (malathion resistance locus should be prominent)
-- [ ] -log10p values are comparable in magnitude (not dramatically inflated or deflated)
-- [ ] Heritability estimates are in expected range
-- [ ] `meansBySample` frequencies are smooth (visual check: no jagged rep-to-rep oscillation)
-- [ ] SNP scan peaks overlap with haplotype scan peaks at the malathion locus
-- [ ] Runtime is acceptable (Step 1 should be fast — O(n) per chromosome)
+- [x] Manhattan plots show the same major peaks (malathion resistance locus should be prominent) — **confirmed 2026-03-21**
+- [x] -log10p values are comparable in magnitude (not dramatically inflated or deflated) — **confirmed 2026-03-21**
+- [x] SNP scan peaks overlap with haplotype scan peaks at the malathion locus — **confirmed; SNP scans look good**
+- [x] Runtime is acceptable — freqsmooth_scan: 12:32 wall / 346 MB; snp_scan: 5:32 wall / 726 MB
+- [ ] Heritability estimates are in expected range — **H² estimates noisier than expected; needs further investigation**
+- [ ] `meansBySample` frequencies are smooth (visual check: no jagged rep-to-rep oscillation) — **not yet checked**
 
 ---
 
