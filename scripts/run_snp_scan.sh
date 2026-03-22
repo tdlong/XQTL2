@@ -60,7 +60,7 @@ echo "snp_scan:   $jid_snp"
 
 # ── concat SNP scan chromosomes ──────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_snp} \
-    -A tdlong_lab -p standard --mem=10G --time=1:00:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=1:00:00 \
     --wrap="bash scripts/concat_scans.sh --snp ${OUTDIR}")
 echo "snp_concat: $jid_concat"
 

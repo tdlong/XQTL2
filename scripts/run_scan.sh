@@ -65,7 +65,7 @@ echo "hap_scan: $jid_hap"
 
 # ── concat chromosomes ───────────────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_hap} \
-    -A tdlong_lab -p standard --mem=10G --time=1:00:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=1:00:00 \
     --wrap="bash scripts/concat_scans.sh ${OUTDIR}")
 echo "concat:   $jid_concat"
 

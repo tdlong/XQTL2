@@ -46,6 +46,22 @@ different lab, change the account/partition in the SBATCH scripts.
 
 A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available.
 
+### SLURM resource requirements
+
+The cluster's standard partition provides max 6 GB per core. Use `--mem-per-cpu`
+(not `--mem`) to request memory. See `Slurm.md` for partition details.
+
+| Script | Step | Partition | CPUs | Mem/CPU | Time | Array | Notes |
+|--------|------|-----------|------|---------|------|-------|-------|
+| `fq2bam.sh` | 2 | standard | 4 | (default) | (default) | 1-N | N = number of samples |
+| `bam2bcf2REFALT.sh` | 3 | standard | 2 | (default) | 5 days | 1-5 | one per chromosome |
+| `REFALT2haps.sh` | 4 | highmem | 1 | 10G | (default) | 1-5 | needs highmem for large hap matrices |
+| `smooth_haps.sh` | 5a | standard | 2 | 6G | 2 hr | 1-5 | most memory-intensive scan step |
+| `hap_scan.sh` | 5a | standard | 2 | 1G | 4 hr | 1-5 | lightweight per-window test |
+| `snp_scan.sh` | 5b | standard | 1 | 3G | 8 hr | 1-5 | loads full SNP table per chromosome |
+| `concat_scans.sh` | 5a/5b | standard | 1 | 6G | 1 hr | — | merges chromosomes, builds tarball |
+| figure scripts | 6 | standard | 1 | 6G | 30 min | — | R plotting, one job for all figures |
+
 ---
 
 ## Step 1 — Get raw reads
@@ -504,7 +520,7 @@ jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 # ── Step 6: Figures + final tarball (runs after all scans finish) ─────────────
 SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --mem=8G --time=0:30:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=0:30:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
     --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
