@@ -125,14 +125,16 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 Create a file listing all bam paths for your experiment (pooled samples + founders).
 Founders are pre-aligned; paths to the shared founder bams are in `helpfiles/founder.bams.txt`.
+Only include founders for your population — grep `"A"` for A-pop or `"B"` for B-pop
+(AB8 is shared and matched by both).
 
 ```bash
 mkdir -p process/<project>
-find data/bam/<project> -name "*.bam" -size +1G > helpfiles/<project>/bams
-cat helpfiles/founder.bams.txt >> helpfiles/<project>/bams
+find data/bam/<project> -name "*.bam" -size +1G > helpfiles/<project>/bam_list.txt
+grep "A" helpfiles/founder.bams.txt >> helpfiles/<project>/bam_list.txt   # or "B" for B-pop
 
 sbatch scripts/bam2bcf2REFALT.sh \
-    helpfiles/<project>/bams \
+    helpfiles/<project>/bam_list.txt \
     process/<project>
 ```
 
@@ -495,10 +497,10 @@ jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
 
 # ── Step 3: REFALT counts ───────────────────────────────────────────────────
 mkdir -p process/${PROJECT}
-find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bams
-cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
+find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
+grep "A" helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bam_list.txt   # or "B" for B-pop
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
-    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bams process/${PROJECT})
+    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
 
 # ── Step 4: Call haplotypes ──────────────────────────────────────────────────
 jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
@@ -560,7 +562,7 @@ onward with all bams combined.
 
 **What changes:**
 - New barcode file for the new samples only (or append to original)
-- `helpfiles/<project>/bams` rebuilt to include old + new bam paths
+- `helpfiles/<project>/bam_list.txt` rebuilt to include old + new bam paths
 - `helpfiles/<project>/hap_params.R` updated: add new sample names to `names_in_bam`
 - `helpfiles/<project>/design.txt` updated: add rows for new samples
 - New scan name (e.g. `myproject_6rep_smooth250`) so you don't overwrite the 3-rep results
@@ -587,11 +589,11 @@ jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
 # ── Step 3: Rebuild bams list (old + new) and rerun REFALT ───────────────────
 #   Old bams are already in data/bam/<project>/ from the first run.
 #   After alignment finishes, combine all bam paths into one file.
-find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bams
-cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
+find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
+grep "A" helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bam_list.txt   # or "B" for B-pop
 
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
-    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bams process/${PROJECT})
+    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
 
 # ── Step 4: Rerun haplotype calling with all samples ─────────────────────────
 #   Make sure hap_params.R has been updated with all sample names.
@@ -664,7 +666,7 @@ XQTL2/
 │   ├── snp_tables/README.md              (documents SNP table preparation)
 │   └── <project>/
 │       ├── <project>.barcodes.txt        (Step 2)
-│       ├── bams                          (Step 3)
+│       ├── bam_list.txt                  (Step 3)
 │       ├── hap_params.R                  (Step 4)
 │       └── design.txt                    (Step 5)
 ├── data/
