@@ -51,12 +51,14 @@ echo "snp:     $jid_snp"
 # ── Step 6: concatenate haplotype scan chromosomes ────────────────────────────
 # Depends only on the haplotype scan — SNP scan is independent
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_scan} \
-    -A tdlong_lab -p standard --mem=10G \
+    -A tdlong_lab -p standard \
+    --cpus-per-task=2 --mem-per-cpu=6G \
     --wrap="bash scripts/concat_Chromosome_Scans.sh process/${PROJECT}/${SCAN}")
 echo "concat:  $jid_concat"
 
 # ── Step 7: publication figure (Wald + Falconer H2 + Cutler H2) ───────────────
 jid_fig=$(sbatch --parsable --dependency=afterok:${jid_concat} \
-    -A tdlong_lab -p standard --mem=10G \
+    -A tdlong_lab -p standard \
+    --cpus-per-task=2 --mem-per-cpu=6G \
     --wrap="module load R/4.2.2 && Rscript ${FIGURE}")
 echo "figure:  $jid_fig"

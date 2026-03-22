@@ -2,8 +2,8 @@
 #SBATCH --job-name=smooth_haps
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=20G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=6G
 #SBATCH --time=2:00:00
 #SBATCH --array=1-5
 

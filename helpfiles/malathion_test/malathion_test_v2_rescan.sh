@@ -13,8 +13,6 @@ SCAN=MALATHION_TEST_v2_smooth125
 FIGURE=helpfiles/${PROJECT}/MALATHION_TEST_v2_smooth125.R
 
 jid_scan=$(sbatch --parsable \
-    -A tdlong_lab -p standard \
-    --cpus-per-task=1 --mem-per-cpu=6G \
     --array=1-5 scripts_freqsmooth/freqsmooth_scan.sh \
     --rfile  ${DESIGN} \
     --dir    process/${PROJECT} \
