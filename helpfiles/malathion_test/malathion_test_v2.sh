@@ -34,7 +34,7 @@ jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 
 # ── Figures + tarball (run after both scans finish) ──────────────────────────
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=0:30:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=0:10:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
     --scan      ${SCAN_DIR}/${SCAN}.scan.txt \

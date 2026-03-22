@@ -3,7 +3,7 @@
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=1G
+#SBATCH --mem-per-cpu=3G
 #SBATCH --time=0:30:00
 #SBATCH --array=1-5
 

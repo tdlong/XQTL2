@@ -52,20 +52,22 @@ The cluster's standard partition provides max 6 GB per core; highmem provides
 10 GB per core. Always use `--mem-per-cpu` (not `--mem`). See `Slurm.md` for
 full partition details.
 
-Every script explicitly requests memory. The scan-step resources were set from
-`seff` profiling on the malathion test dataset (profiled peak memory shown
-where measured).
+Every script explicitly requests memory. Scan steps were profiled with `seff`
+on the malathion test dataset (2 replicates, 4 samples). Larger experiments
+will scale proportionally. Baseline request is 1 CPU × 3G — there is little
+gain in requesting less.
 
-| Script | Step | Partition | CPUs | Mem/CPU | Total mem | Time | Profiled peak | Notes |
-|--------|------|-----------|------|---------|-----------|------|---------------|-------|
-| `fq2bam.sh` | 2 | standard | 4 | 6G | 24G | 1 day | — | `bwa mem -t 4` + `java -Xmx20g` |
-| `bam2bcf2REFALT.sh` | 3 | standard | 1 | 6G | 6G | 5 days | — | single-threaded bcftools mpileup |
-| `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 10G | 1 day | — | large haplotype matrices |
-| `smooth_haps.sh` | 5a | standard | 2 | 6G | 12G | 2 hr | not yet profiled | 2 cores for 12G total |
-| `hap_scan.sh` | 5a | standard | 1 | 1G | 1G | 30 min | 346 MB / 12:32 wall | single-threaded R |
-| `snp_scan.sh` | 5b | standard | 1 | 3G | 3G | 30 min | 726 MB / 5:32 wall | loads SNP table per chromosome |
-| concat | 5a/5b | standard | 1 | 6G | 6G | 1 hr | — | merges chromosomes, builds tarball |
-| figures | 6 | standard | 1 | 6G | 6G | 30 min | — | R plotting |
+| Script | Step | Partition | CPUs | Mem/CPU | Time | Profiled (malathion test) |
+|--------|------|-----------|------|---------|------|--------------------------|
+| `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | not profiled; `bwa -t 4` + `java -Xmx20g` |
+| `bam2bcf2REFALT.sh` | 3 | standard | 1 | 6G | 5 days | not profiled; bcftools mpileup, I/O-bound |
+| `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | not profiled; large haplotype matrices |
+| `smooth_haps.sh` | 5a | standard | 1 | 3G | 30 min | 909 MB / 17s wall |
+| `hap_scan.sh` | 5a | standard | 1 | 3G | 30 min | 307 MB / 5:12 wall |
+| `snp_scan.sh` | 5b | standard | 1 | 3G | 30 min | 732 MB / 5:25 wall |
+| concat | 5a/5b | standard | 1 | 3G | 10 min | 436 MB / 19s wall |
+| snp_concat | 5b | standard | 1 | 3G | 10 min | 413 MB / 21s wall |
+| figures | 6 | standard | 1 | 3G | 10 min | 982 MB / 58s wall |
 
 ---
 
@@ -525,7 +527,7 @@ jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 # ── Step 6: Figures + final tarball (runs after all scans finish) ─────────────
 SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=0:30:00 \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=0:10:00 \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/plot_pseudoscan.R \
     --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
