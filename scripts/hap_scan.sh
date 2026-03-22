@@ -2,7 +2,7 @@
 #SBATCH --job-name=hap_scan
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1G
 #SBATCH --time=4:00:00
 #SBATCH --array=1-5

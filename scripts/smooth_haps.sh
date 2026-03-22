@@ -2,7 +2,7 @@
 #SBATCH --job-name=smooth_haps
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=2          ## R is single-threaded; 2 cores to get 12G total
 #SBATCH --mem-per-cpu=6G
 #SBATCH --time=2:00:00
 #SBATCH --array=1-5

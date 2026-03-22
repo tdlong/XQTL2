@@ -58,11 +58,11 @@ where measured).
 
 | Script | Step | Partition | CPUs | Mem/CPU | Total mem | Time | Profiled peak | Notes |
 |--------|------|-----------|------|---------|-----------|------|---------------|-------|
-| `fq2bam.sh` | 2 | standard | 4 | 6G | 24G | 1 day | — | BWA + `java -Xmx20g` needs ~20G |
-| `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 12G | 5 days | — | bcftools mpileup, I/O-bound |
+| `fq2bam.sh` | 2 | standard | 4 | 6G | 24G | 1 day | — | `bwa mem -t 4` + `java -Xmx20g` |
+| `bam2bcf2REFALT.sh` | 3 | standard | 1 | 6G | 6G | 5 days | — | single-threaded bcftools mpileup |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 10G | (default) | — | large haplotype matrices |
-| `smooth_haps.sh` | 5a | standard | 2 | 6G | 12G | 2 hr | — | most memory-intensive scan step |
-| `hap_scan.sh` | 5a | standard | 2 | 1G | 2G | 4 hr | 346 MB | vectorized Wald + H² |
+| `smooth_haps.sh` | 5a | standard | 2 | 6G | 12G | 2 hr | — | 2 cores for 12G total (not profiled yet) |
+| `hap_scan.sh` | 5a | standard | 1 | 1G | 1G | 4 hr | 346 MB | single-threaded R |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 3G | 8 hr | 726 MB | loads SNP table per chromosome |
 | concat | 5a/5b | standard | 1 | 6G | 6G | 1 hr | — | merges chromosomes, builds tarball |
 | figures | 6 | standard | 1 | 6G | 6G | 30 min | — | R plotting |
