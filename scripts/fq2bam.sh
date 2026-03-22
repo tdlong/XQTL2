@@ -26,8 +26,18 @@ BCA=`head -n $SLURM_ARRAY_TASK_ID $files | tail -n 1 | cut -f1`
 BCB=`head -n $SLURM_ARRAY_TASK_ID $files | tail -n 1 | cut -f2`
 shortname=`head -n $SLURM_ARRAY_TASK_ID $files | tail -n 1 | cut -f3`
 BC="${BCA}-${BCB}"
-R1=`ls $INDIR/*.txt.gz | grep READ1 | grep $BC`
-R2=`echo $R1 | sed 's/READ1/READ2/'`
+# auto-detect naming convention: old (*.txt.gz, READ1/READ2) or new (*.fastq.gz, -R1/-R2)
+R1=$(ls $INDIR/*.txt.gz 2>/dev/null | grep READ1 | grep $BC || true)
+if [[ -n "$R1" ]]; then
+    R2=$(echo $R1 | sed 's/READ1/READ2/')
+else
+    R1=$(ls $INDIR/*.fastq.gz 2>/dev/null | grep "\-R1\." | grep $BC || true)
+    R2=$(echo $R1 | sed 's/-R1\./-R2./')
+fi
+if [[ -z "$R1" ]]; then
+    echo "Error: no R1 fastq found for barcode $BC in $INDIR" >&2
+    exit 1
+fi
 
 bwa mem -t 4 -M $ref ${R1} ${R2} | samtools view -bS - > ${OUTDIR}/$shortname.temp1.bam
 samtools sort ${OUTDIR}/$shortname.temp1.bam -o ${OUTDIR}/$shortname.temp2.bam
