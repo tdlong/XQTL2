@@ -441,36 +441,43 @@ A1 / A2
 
 ---
 
-## Putting it all together
+## Worked example — start-to-finish for one experiment
 
-For a new experiment, copy the block below to `scripts_oneoffs/<project>_pipeline.sh`,
-fill in the variables, and run it. The whole pipeline runs unattended.
+This example shows every step for a typical experiment with two conditions
+(e.g. male and female). You submit the script once and it runs unattended on the
+cluster. At the end you have, for each condition:
+
+- A genome-wide haplotype scan with Wald -log10(p) and heritability estimates
+- Manhattan plots
+- Optionally, a per-SNP scan at single-nucleotide resolution
+- Publication figures
+
+Before running, you need to have prepared the input files described in
+Steps 1–4 above: barcodes, haplotype parameters, design files, and figure
+parameter files (Step 6).
+
+Copy this to `scripts_oneoffs/<project>_pipeline.sh`, fill in the variables,
+and run with `bash scripts_oneoffs/<project>_pipeline.sh`.
 
 ```bash
 #!/bin/bash
-# Edit these variables, then: bash scripts_oneoffs/<project>_pipeline.sh
-
 PROJECT=<project>
 BARCODES=helpfiles/${PROJECT}/${PROJECT}.barcodes.txt
 PARFILE=helpfiles/${PROJECT}/hap_params.R
-FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
-SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
 
-# One entry per scan (sex, treatment, etc.)
+# One entry per condition
 DESIGNS=(  helpfiles/${PROJECT}/design_male.txt   helpfiles/${PROJECT}/design_female.txt )
 OUTDIRS=(  ${PROJECT}_M_smooth250                 ${PROJECT}_F_smooth250                 )
-
-# Figure scripts — run after each scan is concatenated
 FIGURES=(  helpfiles/${PROJECT}/${PROJECT}_M.R    helpfiles/${PROJECT}/${PROJECT}_F.R    )
 
-# ── Step 2: align reads ───────────────────────────────────────────────────────
+# ── Align reads (Step 2) ─────────────────────────────────────────────────────
 NN=$(wc -l < ${BARCODES})
 mkdir -p data/bam/${PROJECT}
 jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
     ${BARCODES} data/raw/${PROJECT} data/bam/${PROJECT})
 echo "fq2bam: $jid_bam"
 
-# ── Step 3: REFALT counts ─────────────────────────────────────────────────────
+# ── REFALT counts (Step 3) ───────────────────────────────────────────────────
 mkdir -p process/${PROJECT}
 find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bams
 cat helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bams
@@ -480,13 +487,13 @@ jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
     helpfiles/${PROJECT}/bams process/${PROJECT})
 echo "REFALT: $jid_refalt"
 
-# ── Step 4: haplotypes ────────────────────────────────────────────────────────
+# ── Haplotypes (Step 4) ──────────────────────────────────────────────────────
 jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
     --array=1-5 scripts/REFALT2haps.sh \
     --parfile ${PARFILE} --dir process/${PROJECT})
 echo "haps:   $jid_haps"
 
-# ── Step 5a: haplotype scan (one call per design) ─────────────────────────────
+# ── Haplotype scan + figures (Step 5a) ───────────────────────────────────────
 for i in "${!DESIGNS[@]}"; do
     bash scripts/run_scan.sh \
         --design ${DESIGNS[$i]} \
@@ -496,7 +503,10 @@ for i in "${!DESIGNS[@]}"; do
         --after  ${jid_haps}
 done
 
-# ── Step 5b: SNP scan (one call per design, after hap scan completes) ─────────
+# ── SNP scan (Step 5b, optional — remove this block if not needed) ───────────
+FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
+SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
+
 for i in "${!DESIGNS[@]}"; do
     bash scripts/run_snp_scan.sh \
         --design    ${DESIGNS[$i]} \
@@ -505,6 +515,12 @@ for i in "${!DESIGNS[@]}"; do
         --snp-table ${SNP_TABLE} \
         --founders  ${FOUNDERS}
 done
+```
+
+When all jobs finish, download results with:
+
+```bash
+scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
 ```
 
 ---
