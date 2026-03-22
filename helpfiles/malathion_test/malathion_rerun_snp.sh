@@ -9,5 +9,7 @@ bash scripts/run_snp_scan.sh \
     --dir       process/malathion_test \
     --scan      MALATHION_TEST_v2_smooth125 \
     --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
-    --figure    helpfiles/malathion_test/MALATHION_TEST_v2_smooth125_snp.R
+    --founders  A1,A2,A3,A4,A5,A6,A7,AB8
+
+# Figures (run separately after scan completes):
+#   Rscript helpfiles/malathion_test/MALATHION_TEST_v2_smooth125_snp.R

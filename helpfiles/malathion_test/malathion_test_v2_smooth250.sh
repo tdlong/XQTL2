@@ -8,5 +8,7 @@ bash scripts/run_scan.sh \
     --design helpfiles/malathion_test/design.txt \
     --dir    process/malathion_test \
     --scan   MALATHION_TEST_v2_smooth250 \
-    --smooth 250 \
-    --figure helpfiles/malathion_test/MALATHION_TEST_v2_smooth250.R
+    --smooth 250
+
+# Figures (run separately after scan completes):
+#   Rscript helpfiles/malathion_test/MALATHION_TEST_v2_smooth250.R

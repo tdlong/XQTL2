@@ -1,98 +1,120 @@
+#!/usr/bin/env Rscript
 ###############################################################################
-# plot_pseudoscan.R  —  source this file, do not edit it
+# plot_pseudoscan.R — 5-panel Wald -log10(p) line plot from haplotype scan
 #
-# Expects the following variables to be defined before source() is called.
-# See helpfiles/<project_name>/ for example configs.
+# Usage:
+#   Rscript scripts/plot_pseudoscan.R \
+#       --scan  process/proj/SCAN/SCAN.scan.txt \
+#       --out   process/proj/SCAN/wald.png \
+#       --format powerpoint
 #
-# Required:
-#   SCAN_FILES    character vector of .scan.txt paths — one per scan to overlay
-#   SCAN_LABELS   character vector of legend labels, one per scan (or NULL)
-#   SCAN_COLOURS  character vector of colours, one per scan (or NULL for auto)
-#   THRESHOLD     numeric — Wald value for dashed threshold line (or NULL)
-#   OUT_FILE      character — output .png path
-#   FORMAT        character — one of: manuscript_half, manuscript_full,
-#                   manuscript_half_hires, manuscript_full_hires,
-#                   powerpoint, web, email
+# Multi-scan overlay:
+#   Rscript scripts/plot_pseudoscan.R \
+#       --scan process/proj/SCAN_M/SCAN_M.scan.txt \
+#       --scan process/proj/SCAN_F/SCAN_F.scan.txt \
+#       --label Male --label Female \
+#       --colour "#1F78B4" --colour "#E31A1C" \
+#       --out overlay.png --format powerpoint
 #
 # Optional:
-#   OUT_HEIGHT_IN numeric — height in inches; defaults to 1.4 in per chromosome
-#   PEAKS         data frame with columns chr, pos_mb, label (or NULL)
-#   GENES         data frame with columns name, chr, pos_mb (or NULL)
-#
-# Optional override (dm6 defaults used if not set):
-#   HET_BOUNDS    data frame with columns chr, eu_start, eu_end
+#   --threshold 10        dashed horizontal line
+#   --genes genes.txt     tab-delimited: name, chr, pos_mb
+#   --peaks peaks.txt     tab-delimited: label, chr, pos_mb
+#   --height 7.0          override height in inches (default: 1.4 per chr)
 ###############################################################################
 
 library(tidyverse)
 
-# ── Format presets ───────────────────────────────────────────────────────────
-# Width (in), DPI, and base font size — height always set by user in config.
+# ── Parse command-line arguments ─────────────────────────────────────────────
+args <- commandArgs(trailingOnly = TRUE)
 
-FORMAT_PRESETS <- list(
-  manuscript_half      = c(w = 3.5, dpi = 300, font =  7),
-  manuscript_full      = c(w = 7.0, dpi = 300, font =  8),
-  manuscript_half_hires= c(w = 3.5, dpi = 600, font =  7),
-  manuscript_full_hires= c(w = 7.0, dpi = 600, font =  8),
-  powerpoint           = c(w = 8.0, dpi = 150, font =  9),
-  web                  = c(w = 7.0, dpi = 150, font = 10),
-  email                = c(w = 6.0, dpi = 100, font =  9)
-)
+scan_files <- character(0)
+scan_labels <- character(0)
+scan_colours <- character(0)
+out_file <- NULL
+format_name <- "powerpoint"
+threshold <- NULL
+genes_file <- NULL
+peaks_file <- NULL
+out_height <- NULL
 
-if (!FORMAT %in% names(FORMAT_PRESETS))
-  stop("Unknown FORMAT '", FORMAT, "'. Choose from: ",
-       paste(names(FORMAT_PRESETS), collapse = ", "))
-
-fmt       <- FORMAT_PRESETS[[FORMAT]]
-BASE_FONT <- fmt["font"]
-
-# ── Defaults ─────────────────────────────────────────────────────────────────
-
-chr_order  <- c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
-chr_labels <- c(chrX = "X", chr2L = "2L", chr2R = "2R", chr3L = "3L", chr3R = "3R")
-
-if (!exists("HET_BOUNDS")) {
-  # dm6 euchromatin boundaries
-  # Source: Huynh et al. 2023 PLoS Genet 19:e1010439, Supplementary Table S2
-  HET_BOUNDS <- tribble(
-    ~chr,    ~eu_start, ~eu_end,
-    "chrX",   2.5,      21.2,
-    "chr2L",  0.5,      22.9,
-    "chr2R",  1.3,      25.1,
-    "chr3L",  0.7,      24.0,
-    "chr3R",  4.5,      32.0
+i <- 1
+while (i <= length(args)) {
+  switch(args[i],
+    "--scan"      = { scan_files   <- c(scan_files,   args[i+1]); i <- i + 2 },
+    "--label"     = { scan_labels  <- c(scan_labels,  args[i+1]); i <- i + 2 },
+    "--colour"    = { scan_colours <- c(scan_colours, args[i+1]); i <- i + 2 },
+    "--color"     = { scan_colours <- c(scan_colours, args[i+1]); i <- i + 2 },
+    "--out"       = { out_file     <- args[i+1]; i <- i + 2 },
+    "--format"    = { format_name  <- args[i+1]; i <- i + 2 },
+    "--threshold" = { threshold    <- as.numeric(args[i+1]); i <- i + 2 },
+    "--genes"     = { genes_file   <- args[i+1]; i <- i + 2 },
+    "--peaks"     = { peaks_file   <- args[i+1]; i <- i + 2 },
+    "--height"    = { out_height   <- as.numeric(args[i+1]); i <- i + 2 },
+    stop("Unknown argument: ", args[i])
   )
 }
 
-# ── Read scans ────────────────────────────────────────────────────────────────
+if (length(scan_files) == 0) stop("At least one --scan is required")
+if (is.null(out_file))       stop("--out is required")
 
-labels  <- if (is.null(SCAN_LABELS))  basename(SCAN_FILES) else SCAN_LABELS
-colours <- if (is.null(SCAN_COLOURS)) hcl.colors(length(SCAN_FILES), "Dark 2") else SCAN_COLOURS
+if (length(scan_labels) == 0)  scan_labels  <- basename(scan_files)
+if (length(scan_colours) == 0) scan_colours <- if (length(scan_files) == 1) "#1F78B4" else hcl.colors(length(scan_files), "Dark 2")
 
-scans_df <- map_dfr(seq_along(SCAN_FILES), function(i) {
-  f <- SCAN_FILES[i]
+# ── Format presets ───────────────────────────────────────────────────────────
+FORMAT_PRESETS <- list(
+  manuscript_half       = c(w = 3.5, dpi = 300, font =  7),
+  manuscript_full       = c(w = 7.0, dpi = 300, font =  8),
+  manuscript_half_hires = c(w = 3.5, dpi = 600, font =  7),
+  manuscript_full_hires = c(w = 7.0, dpi = 600, font =  8),
+  powerpoint            = c(w = 8.0, dpi = 150, font =  9),
+  web                   = c(w = 7.0, dpi = 150, font = 10),
+  email                 = c(w = 6.0, dpi = 100, font =  9)
+)
+
+if (!format_name %in% names(FORMAT_PRESETS))
+  stop("Unknown format '", format_name, "'. Choose from: ",
+       paste(names(FORMAT_PRESETS), collapse = ", "))
+
+fmt       <- FORMAT_PRESETS[[format_name]]
+BASE_FONT <- fmt["font"]
+
+# ── Constants ────────────────────────────────────────────────────────────────
+chr_order  <- c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
+chr_labels <- c(chrX = "X", chr2L = "2L", chr2R = "2R", chr3L = "3L", chr3R = "3R")
+
+HET_BOUNDS <- tribble(
+  ~chr,    ~eu_start, ~eu_end,
+  "chrX",   2.5,      21.2,
+  "chr2L",  0.5,      22.9,
+  "chr2R",  1.3,      25.1,
+  "chr3L",  0.7,      24.0,
+  "chr3R",  4.5,      32.0
+)
+
+# ── Read scans ───────────────────────────────────────────────────────────────
+scans_df <- map_dfr(seq_along(scan_files), function(j) {
+  f <- scan_files[j]
   if (!file.exists(f)) { warning("File not found, skipping: ", f); return(NULL) }
   read.table(f, header = TRUE) %>%
     as_tibble() %>%
-    mutate(pos_mb = pos / 1e6, label = labels[i])
+    mutate(pos_mb = pos / 1e6, label = scan_labels[j])
 }) %>%
   mutate(chr = factor(chr, levels = chr_order)) %>%
   filter(!is.na(Wald_log10p), chr %in% chr_order)
 
-if (nrow(scans_df) == 0) stop("No scan data loaded — check SCAN_FILES paths.")
+if (nrow(scans_df) == 0) stop("No scan data loaded — check --scan paths.")
 
-# ── Auto height ───────────────────────────────────────────────────────────────
-if (!exists("OUT_HEIGHT_IN"))
-  OUT_HEIGHT_IN <- length(unique(as.character(scans_df$chr))) * 1.4
+if (is.null(out_height))
+  out_height <- length(unique(as.character(scans_df$chr))) * 1.4
 
-colour_map <- setNames(colours, labels)
+colour_map <- setNames(scan_colours, scan_labels)
 
-# ── Chr label data frame (placed inside panels, upper-right) ─────────────────
 chr_label_df <- scans_df %>%
   distinct(chr) %>%
   mutate(label = chr_labels[as.character(chr)])
 
-# ── Heterochromatin rectangles ────────────────────────────────────────────────
-
+# ── Heterochromatin shading ──────────────────────────────────────────────────
 het_rects <- HET_BOUNDS %>%
   mutate(chr = factor(chr, levels = chr_order)) %>%
   left_join(
@@ -104,8 +126,7 @@ het_rects <- HET_BOUNDS %>%
       transmute(., chr, xmin = eu_end,  xmax = xmax_data)
   )}
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
-
+# ── Plot ─────────────────────────────────────────────────────────────────────
 p <- ggplot(scans_df,
             aes(x = pos_mb, y = Wald_log10p, colour = label, group = label)) +
   geom_rect(data = het_rects,
@@ -124,63 +145,72 @@ p <- ggplot(scans_df,
   labs(x = "Position (Mb)", y = expression(-log[10](italic(P)) ~ "Wald")) +
   theme_classic(base_size = BASE_FONT) +
   theme(
-    legend.position        = "none",
+    legend.position        = if (length(scan_files) > 1) "top" else "none",
     strip.background       = element_blank(),
     strip.text             = element_blank(),
     panel.grid.major.y     = element_line(colour = "grey92", linewidth = 0.3),
     panel.spacing          = unit(0.4, "lines")
   )
 
-if (!is.null(THRESHOLD)) {
-  p <- p + geom_hline(yintercept = THRESHOLD, linetype = "dashed",
+if (!is.null(threshold))
+  p <- p + geom_hline(yintercept = threshold, linetype = "dashed",
                       colour = "grey40", linewidth = 0.4)
-}
 
-# ── Peak labels ───────────────────────────────────────────────────────────────
-
-if (!is.null(PEAKS) && nrow(PEAKS) > 0) {
-  peaks_plot <- PEAKS %>%
-    mutate(chr = factor(chr, levels = chr_order)) %>%
-    rowwise() %>%
-    mutate(Wald_log10p = {
-      s <- scans_df %>% filter(chr == .data$chr, label == labels[1])
-      if (nrow(s) == 0) THRESHOLD + 2
-      else s$Wald_log10p[which.min(abs(s$pos_mb - pos_mb))]
-    }) %>%
-    ungroup()
-
-  p <- p +
-    geom_point(data = peaks_plot,
-               aes(x = pos_mb, y = Wald_log10p + 1.5),
-               shape = 25, size = 1.5, fill = NA,
-               colour = "black", stroke = 0.8, inherit.aes = FALSE) +
-    geom_text(data = peaks_plot,
-              aes(x = pos_mb, y = Wald_log10p + 4, label = label),
-              size = BASE_FONT * 0.25, colour = "black",
-              hjust = 0.5, inherit.aes = FALSE)
-}
-
-# ── Gene labels ───────────────────────────────────────────────────────────────
-
-if (!is.null(GENES) && nrow(GENES) > 0) {
-  genes_plot <- GENES %>%
+# ── Gene labels ──────────────────────────────────────────────────────────────
+if (!is.null(genes_file) && file.exists(genes_file)) {
+  genes_df <- read.delim(genes_file, stringsAsFactors = FALSE) %>%
     mutate(chr = factor(chr, levels = chr_order)) %>%
     filter(chr %in% chr_order)
 
-  p <- p +
-    geom_vline(data = genes_plot, aes(xintercept = pos_mb),
-               colour = "darkgreen", linetype = "dotted",
-               linewidth = 0.5, inherit.aes = FALSE) +
-    geom_text(data = genes_plot, aes(x = pos_mb, y = Inf, label = name),
-              angle = 90, hjust = 1.1, vjust = 0.4,
-              size = BASE_FONT * 0.25, colour = "darkgreen",
-              fontface = "italic", inherit.aes = FALSE)
+  if (nrow(genes_df) > 0) {
+    p <- p +
+      geom_vline(data = genes_df, aes(xintercept = pos_mb),
+                 colour = "darkgreen", linetype = "dotted",
+                 linewidth = 0.5, inherit.aes = FALSE) +
+      geom_text(data = genes_df, aes(x = pos_mb, y = Inf, label = name),
+                angle = 90, hjust = 1.1, vjust = -0.5,
+                size = BASE_FONT * 0.30, colour = "darkgreen",
+                fontface = "italic", inherit.aes = FALSE)
+  }
 }
 
-# ── Save ──────────────────────────────────────────────────────────────────────
+# ── Peak labels ──────────────────────────────────────────────────────────────
+if (!is.null(peaks_file) && file.exists(peaks_file)) {
+  peaks_df <- read.delim(peaks_file, stringsAsFactors = FALSE) %>%
+    mutate(chr = factor(chr, levels = chr_order)) %>%
+    filter(chr %in% chr_order)
 
-png(OUT_FILE, width = fmt["w"], height = OUT_HEIGHT_IN,
+  if (nrow(peaks_df) > 0) {
+    # Find the y value at each peak position for smart label placement
+    peaks_df <- peaks_df %>%
+      rowwise() %>%
+      mutate(y_val = {
+        s <- scans_df %>% filter(chr == .data$chr, label == scan_labels[1])
+        if (nrow(s) == 0) 0 else s$Wald_log10p[which.min(abs(s$pos_mb - pos_mb))]
+      }) %>%
+      ungroup()
+
+    # Position labels above the data with proportional offset
+    y_range <- max(scans_df$Wald_log10p, na.rm = TRUE)
+    peaks_df <- peaks_df %>%
+      mutate(y_label = y_val + y_range * 0.08)
+
+    p <- p +
+      geom_point(data = peaks_df,
+                 aes(x = pos_mb, y = y_val),
+                 shape = 25, size = 2, fill = NA,
+                 colour = "black", stroke = 0.8, inherit.aes = FALSE) +
+      geom_text(data = peaks_df,
+                aes(x = pos_mb, y = y_label, label = label),
+                size = BASE_FONT * 0.30, colour = "black",
+                hjust = 0.5, vjust = 0, inherit.aes = FALSE)
+  }
+}
+
+# ── Save ─────────────────────────────────────────────────────────────────────
+dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+png(out_file, width = fmt["w"], height = out_height,
     units = "in", res = fmt["dpi"])
 print(p)
 dev.off()
-cat("Saved:", OUT_FILE, "\n")
+cat("Saved:", out_file, "\n")

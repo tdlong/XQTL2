@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 # MALATHION_TEST_v2_smooth250.R
 #
-# Publication figure for the malathion freqsmooth pipeline — 250 kb smoothing.
-# Produces Wald + combined H² figures + meansBySample QC plot, then bundles
+# Publication figures for malathion haplotype scan — 250 kb smoothing.
+# Produces Wald + H² figures + meansBySample QC plot, then bundles
 # all outputs into a single tar for download.
 #
 # Run from XQTL2 project root:
@@ -12,28 +12,25 @@ library(tidyverse)
 
 SCAN_DIR  <- "process/malathion_test/MALATHION_TEST_v2_smooth250"
 SCAN      <- "MALATHION_TEST_v2_smooth250"
-SCAN_FILE <- file.path(SCAN_DIR, paste0(SCAN, ".scan.txt"))
-OUT_TAR   <- file.path(SCAN_DIR, paste0(SCAN, ".hap.tar.gz"))
 
-# ── Figure 1: Haplotype Wald -log10(p) ────────────────────────────────────────
-SCAN_FILES   <- SCAN_FILE
-SCAN_LABELS  <- NULL
-SCAN_COLOURS <- c("#1F78B4")
-THRESHOLD    <- 10
-PEAKS        <- NULL
-GENES        <- NULL
-OUT_FILE     <- file.path(SCAN_DIR, paste0(SCAN, ".wald.png"))
-FORMAT       <- "powerpoint"
-source("scripts/plot_pseudoscan.R")
+# ── Figure 1: Haplotype Wald -log10(p) ──────────────────────────────────────
+system(paste(
+  "Rscript scripts/plot_pseudoscan.R",
+  "--scan",   file.path(SCAN_DIR, paste0(SCAN, ".scan.txt")),
+  "--out",    file.path(SCAN_DIR, paste0(SCAN, ".wald.png")),
+  "--format", "powerpoint",
+  "--threshold", "10"
+))
 
-# ── Figure 2: Falconer + Cutler H² overlaid ───────────────────────────────────
-SCAN_FILE <- file.path(SCAN_DIR, paste0(SCAN, ".scan.txt"))
-THRESHOLD <- NULL
-OUT_FILE  <- file.path(SCAN_DIR, paste0(SCAN, ".H2.png"))
-FORMAT    <- "powerpoint"
-source("scripts/plot_H2_overlay.R")
+# ── Figure 2: Falconer + Cutler H² overlaid ─────────────────────────────────
+system(paste(
+  "Rscript scripts/plot_H2_overlay.R",
+  "--scan",   file.path(SCAN_DIR, paste0(SCAN, ".scan.txt")),
+  "--out",    file.path(SCAN_DIR, paste0(SCAN, ".H2.png")),
+  "--format", "powerpoint"
+))
 
-# ── Figure 3: meansBySample QC — all founders, chr3L ─────────────────────────
+# ── Figure 3: meansBySample QC — all founders, chr3L ────────────────────────
 means_file <- file.path(SCAN_DIR, paste0(SCAN, ".meansBySample.txt"))
 qc_file    <- file.path(SCAN_DIR, paste0(SCAN, ".means_qc_chr3L.png"))
 
@@ -63,7 +60,8 @@ p_qc <- ggplot(means_df, aes(x = pos_mb, y = freq, colour = Rep, linetype = Pool
 ggsave(qc_file, p_qc, width = 10, height = 6, dpi = 150)
 cat("Saved:", qc_file, "\n")
 
-# ── Bundle for download ────────────────────────────────────────────────────────
+# ── Bundle for download ─────────────────────────────────────────────────────
+OUT_TAR <- file.path(SCAN_DIR, paste0(SCAN, ".hap.tar.gz"))
 cat("Writing", OUT_TAR, "\n")
 system(paste(
   "tar -czf", OUT_TAR, "-C", SCAN_DIR,

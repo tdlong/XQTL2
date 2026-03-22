@@ -12,7 +12,6 @@
 #       --scan      <scan_name> \
 #       --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
 #       --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
-#       --figure    helpfiles/<project>/snp_figure.R \
 #       --after     <jobid>
 
 set -e
@@ -25,7 +24,6 @@ while [[ $# -gt 0 ]]; do
     --scan)      SCAN="$2";      shift 2 ;;
     --snp-table) SNP_TABLE="$2"; shift 2 ;;
     --founders)  FOUNDERS="$2";  shift 2 ;;
-    --figure)    FIGURE="$2";    shift 2 ;;
     --after)     AFTER="$2";     shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -66,15 +64,4 @@ jid_concat=$(sbatch --parsable --dependency=afterok:${jid_snp} \
     --wrap="bash scripts/concat_scans.sh --snp ${OUTDIR}")
 echo "snp_concat: $jid_concat"
 
-jid_final="${jid_concat}"
-
-# ── figure (only if --figure provided) ───────────────────────────────────────
-if [[ -n "$FIGURE" ]]; then
-    jid_fig=$(sbatch --parsable --dependency=afterok:${jid_final} \
-        -A tdlong_lab -p standard --mem=10G --time=1:00:00 \
-        --wrap="module load R/4.2.2 && Rscript ${FIGURE}")
-    echo "figure:     $jid_fig"
-    jid_final="${jid_fig}"
-fi
-
-echo "done:       ${jid_final}"
+echo "done:       ${jid_concat}"

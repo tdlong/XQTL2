@@ -269,109 +269,68 @@ directory alongside the haplotype scan results.
 
 ## Step 6 — Generate publication figures
 
-Each figure is controlled by a short R parameter file that you write. The
-parameter file sets variables (input paths, colors, output path, etc.) and then
-calls `source()` on one of the plot engines in `scripts/`. You run the parameter
-file with `Rscript` and it produces the figure.
+Three plotting scripts produce 5-panel (per-chromosome) figures. Each takes
+the scan output file as input via command-line arguments — no parameter files
+needed.
 
-### How it works
-
-1. Write a parameter file, e.g. `helpfiles/<project>/wald_figure.R`
-2. Run it: `Rscript helpfiles/<project>/wald_figure.R`
-3. The plot engine reads the scan data, makes the figure, and saves the PNG
-
-You can pass the parameter file to `run_scan.sh --figure` or
-`run_snp_scan.sh --figure` so that the figure is generated automatically
-as part of the pipeline.
-
-### Plot engines
-
-Three plot engines are available:
-
-**`scripts/plot_pseudoscan.R`** — 5-panel Wald -log10(p) line plot from the haplotype scan.
-
-**`scripts/plot_H2_overlay.R`** — 5-panel Falconer + Cutler heritability overlay from the haplotype scan.
-
-**`scripts/plot_freqsmooth_snp.R`** — 5-panel Wald -log10(p) dot plot from the SNP scan.
-
-### Example parameter files
-
-**Haplotype Wald scan** — save as `helpfiles/<project>/wald_figure.R`:
-
-```r
-# Inputs
-SCAN_FILES   <- c("process/<project>/<scan_name>/<scan_name>.scan.txt")
-SCAN_COLOURS <- c("#1F78B4")
-SCAN_LABELS  <- NULL       # NULL uses the file basename
-THRESHOLD    <- 10         # dashed horizontal line at this -log10(p)
-
-# Output
-OUT_FILE     <- "process/<project>/<scan_name>/wald.png"
-FORMAT       <- "powerpoint"    # sets width and DPI (see table below)
-
-# Optional annotations (set to NULL to skip)
-PEAKS        <- NULL
-GENES        <- NULL
-
-# Run the plot engine
-source("scripts/plot_pseudoscan.R")
-```
-
-**Two-scan overlay** (e.g. male vs female) — save as `helpfiles/<project>/MF_overlay.R`:
-
-```r
-SCAN_FILES   <- c("process/<project>/<scan_M>/<scan_M>.scan.txt",
-                   "process/<project>/<scan_F>/<scan_F>.scan.txt")
-SCAN_COLOURS <- c("#1F78B4", "#E31A1C")
-SCAN_LABELS  <- c("Male", "Female")
-THRESHOLD    <- 10
-OUT_FILE     <- "process/<project>/MF_overlay.png"
-FORMAT       <- "powerpoint"
-PEAKS        <- NULL
-GENES        <- NULL
-
-source("scripts/plot_pseudoscan.R")
-```
-
-**Heritability overlay** — save as `helpfiles/<project>/H2_figure.R`:
-
-```r
-SCAN_FILE <- "process/<project>/<scan_name>/<scan_name>.scan.txt"
-OUT_FILE  <- "process/<project>/<scan_name>/H2.png"
-FORMAT    <- "powerpoint"
-
-source("scripts/plot_H2_overlay.R")
-```
-
-**SNP scan** — save as `helpfiles/<project>/snp_figure.R`:
-
-```r
-SCAN_FILE  <- "process/<project>/<scan_name>/<scan_name>.snp_scan.txt"
-OUT_FILE   <- "process/<project>/<scan_name>/snp_wald.png"
-FORMAT     <- "powerpoint"
-THRESHOLD  <- 10
-
-source("scripts/plot_freqsmooth_snp.R")
-```
-
-### Run a figure script
-
-On the cluster:
+### Haplotype Wald scan
 
 ```bash
-module load R/4.2.2
-Rscript helpfiles/<project>/wald_figure.R
+Rscript scripts/plot_pseudoscan.R \
+    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/<scan_name>/wald.png \
+    --format powerpoint \
+    --threshold 10
 ```
 
-Or pass it to the scan driver so it runs automatically after concat:
+Overlay two scans (e.g. male vs female):
 
 ```bash
-bash scripts/run_scan.sh \
-    --design ... --dir ... --scan ... \
-    --figure helpfiles/<project>/wald_figure.R
+Rscript scripts/plot_pseudoscan.R \
+    --scan   process/<project>/<scan_M>/<scan_M>.scan.txt \
+    --scan   process/<project>/<scan_F>/<scan_F>.scan.txt \
+    --label  Male --label Female \
+    --colour "#1F78B4" --colour "#E31A1C" \
+    --out    process/<project>/MF_overlay.png \
+    --format powerpoint --threshold 10
 ```
 
-### FORMAT options
+### Heritability overlay (Falconer + Cutler)
+
+```bash
+Rscript scripts/plot_H2_overlay.R \
+    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/<scan_name>/H2.png \
+    --format powerpoint
+```
+
+### SNP scan
+
+```bash
+Rscript scripts/plot_freqsmooth_snp.R \
+    --scan   process/<project>/<scan_name>/<scan_name>.snp_scan.txt \
+    --out    process/<project>/<scan_name>/snp_wald.png \
+    --format powerpoint --threshold 10
+```
+
+### Common options
+
+All three scripts accept these arguments:
+
+| Flag | Description |
+|------|-------------|
+| `--scan <file>` | Input scan file (required; repeat for overlays in pseudoscan/snp) |
+| `--out <file>` | Output PNG path (required) |
+| `--format <name>` | Size/DPI preset (default: `powerpoint`) |
+| `--threshold <n>` | Dashed horizontal line at this y value |
+| `--genes <file>` | Tab-delimited gene annotations (columns: `name`, `chr`, `pos_mb`) |
+| `--peaks <file>` | Tab-delimited peak annotations (columns: `label`, `chr`, `pos_mb`) |
+| `--height <in>` | Override figure height in inches (default: 1.4 per chromosome) |
+
+`plot_pseudoscan.R` and `plot_freqsmooth_snp.R` also accept `--label` and
+`--colour` (one per `--scan`, for overlays).
+
+### FORMAT presets
 
 | FORMAT | Width | DPI | Use for |
 |--------|-------|-----|---------|
@@ -383,22 +342,31 @@ bash scripts/run_scan.sh \
 | `web` | 7.0 in | 150 | web/HTML |
 | `email` | 6.0 in | 100 | email preview |
 
-### Optional annotations
+### Gene and peak annotation files
 
-Gene and peak labels use Mb coordinates. Add these to any parameter file
-that uses `plot_pseudoscan.R`:
+To label genes or peaks on any figure, create a tab-delimited text file and
+pass it with `--genes` or `--peaks`. These work with all three plot engines.
 
-```r
-GENES <- data.frame(
-    name   = c("Ace",   "Cyp6g1"),
-    chr    = c("chr3R", "chr2R"),
-    pos_mb = c(9.07,    12.19)
-)
-PEAKS <- data.frame(
-    label  = c("peak1"),
-    chr    = c("chr3R"),
-    pos_mb = c(9.1)
-)
+`helpfiles/<project>/genes.txt`:
+
+```
+name	chr	pos_mb
+Ace	chr3R	9.07
+Cyp6g1	chr2R	12.19
+```
+
+`helpfiles/<project>/peaks.txt`:
+
+```
+label	chr	pos_mb
+peak1	chr3R	9.1
+```
+
+```bash
+Rscript scripts/plot_pseudoscan.R \
+    --scan ... --out ... --format powerpoint \
+    --genes helpfiles/<project>/genes.txt \
+    --peaks helpfiles/<project>/peaks.txt
 ```
 
 ---
@@ -468,7 +436,6 @@ PARFILE=helpfiles/${PROJECT}/hap_params.R
 # One entry per condition
 DESIGNS=(  helpfiles/${PROJECT}/design_male.txt   helpfiles/${PROJECT}/design_female.txt )
 OUTDIRS=(  ${PROJECT}_M_smooth250                 ${PROJECT}_F_smooth250                 )
-FIGURES=(  helpfiles/${PROJECT}/${PROJECT}_M.R    helpfiles/${PROJECT}/${PROJECT}_F.R    )
 
 # ── Align reads (Step 2) ─────────────────────────────────────────────────────
 NN=$(wc -l < ${BARCODES})
@@ -493,13 +460,12 @@ jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
     --parfile ${PARFILE} --dir process/${PROJECT})
 echo "haps:   $jid_haps"
 
-# ── Haplotype scan + figures (Step 5a) ───────────────────────────────────────
+# ── Haplotype scan (Step 5a) ──────────────────────────────────────────────────
 for i in "${!DESIGNS[@]}"; do
     bash scripts/run_scan.sh \
         --design ${DESIGNS[$i]} \
         --dir    process/${PROJECT} \
         --scan   ${OUTDIRS[$i]} \
-        --figure ${FIGURES[$i]} \
         --after  ${jid_haps}
 done
 
@@ -517,10 +483,21 @@ for i in "${!DESIGNS[@]}"; do
 done
 ```
 
-When all jobs finish, download results with:
+When all jobs finish, download results and generate figures (Step 6):
 
 ```bash
 scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
+
+# Example figure commands — see Step 6 for full usage
+Rscript scripts/plot_pseudoscan.R \
+    --scan process/<project>/<scan_name>/<scan_name>.scan.txt \
+    --out  process/<project>/<scan_name>/wald.png \
+    --format powerpoint --threshold 10
+
+Rscript scripts/plot_H2_overlay.R \
+    --scan process/<project>/<scan_name>/<scan_name>.scan.txt \
+    --out  process/<project>/<scan_name>/H2.png \
+    --format powerpoint
 ```
 
 ---

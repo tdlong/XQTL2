@@ -9,7 +9,6 @@
 #       --dir     process/<project> \
 #       --scan    <scan_name> \
 #       --smooth  250 \
-#       --figure  helpfiles/<project>/figure.R \
 #       --after   <jobid>
 
 set -e
@@ -24,7 +23,6 @@ while [[ $# -gt 0 ]]; do
     --dir)    DIR="$2";       shift 2 ;;
     --scan)   SCAN="$2";      shift 2 ;;
     --smooth) SMOOTH_KB="$2"; shift 2 ;;
-    --figure) FIGURE="$2";    shift 2 ;;
     --after)  AFTER="$2";     shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -71,15 +69,4 @@ jid_concat=$(sbatch --parsable --dependency=afterok:${jid_hap} \
     --wrap="bash scripts/concat_scans.sh ${OUTDIR}")
 echo "concat:   $jid_concat"
 
-jid_final="${jid_concat}"
-
-# ── figure (only if --figure provided) ───────────────────────────────────────
-if [[ -n "$FIGURE" ]]; then
-    jid_fig=$(sbatch --parsable --dependency=afterok:${jid_final} \
-        -A tdlong_lab -p standard --mem=10G --time=1:00:00 \
-        --wrap="module load R/4.2.2 && Rscript ${FIGURE}")
-    echo "figure:   $jid_fig"
-    jid_final="${jid_fig}"
-fi
-
-echo "done:     ${jid_final}"
+echo "done:     ${jid_concat}"
