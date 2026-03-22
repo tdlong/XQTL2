@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=snp_scan
 #SBATCH -A tdlong_lab
-#SBATCH -p highmem
-#SBATCH --cpus-per-task=3
-#SBATCH --mem-per-cpu=10G
+#SBATCH -p standard
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=2G
 #SBATCH --time=8:00:00
 #SBATCH --array=1-5
 
