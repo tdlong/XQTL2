@@ -56,88 +56,97 @@ nF            <- length(founder_names)
 ProportionSelect <- design.df %>%
   filter(TRT == "Z") %>% select(REP, Proportion) %>% arrange(REP)
 
-# ── Per-window scan using group_map ──────────────────────────────────────────
-# group_map applies a function to each (CHROM, pos) group, returning a list
-# that we bind into the final result table.
-cat(sprintf("Running Wald scan on %s...\n", mychr))
+# ── Pre-build arrays once — avoids repeated dplyr ops inside window loop ──────
+cat(sprintf("Building arrays for %s...\n", mychr))
 
-scan_results <- freq_smoothed %>%
-  group_by(CHROM, pos) %>%
-  group_map(function(w_freq, key) {
+freq_chr <- freq_smoothed %>% filter(CHROM == mychr)
+err_chr  <- err_smoothed  %>% filter(CHROM == mychr)
 
-    # ── Reconstruct p1, p2 matrices (nrepl x nF) ─────────────────────────────
-    to_mat <- function(trt) {
-      w_freq %>%
-        filter(TRT == trt) %>%
-        arrange(REP) %>%
-        pivot_wider(names_from = founder, values_from = freq) %>%
-        select(all_of(founder_names)) %>%
-        as.matrix()
-    }
-    p1 <- to_mat("C"); p2 <- to_mat("Z")
-    if (anyNA(p1) || anyNA(p2)) return(NULL)
+win_pos <- sort(unique(freq_chr$pos))
+W       <- length(win_pos)
 
-    N1 <- w_freq %>% filter(TRT == "C") %>% arrange(REP) %>%
-            group_by(REP) %>% slice(1) %>% pull(Num)
-    N2 <- w_freq %>% filter(TRT == "Z") %>% arrange(REP) %>%
-            group_by(REP) %>% slice(1) %>% pull(Num)
+# Sample sizes: constant per REP across windows
+N1 <- freq_chr %>% filter(TRT == "C") %>%
+  distinct(REP, Num) %>% arrange(REP) %>% pull(Num)
+N2 <- freq_chr %>% filter(TRT == "Z") %>%
+  distinct(REP, Num) %>% arrange(REP) %>% pull(Num)
 
-    # ── Reconstruct covar arrays (nF x nF x nrepl) ───────────────────────────
-    w_err <- err_smoothed %>%
-      filter(CHROM == key$CHROM, pos == key$pos)
+# Frequency arrays: W x nrepl x nF
+# pivot_wider once for the full chromosome then reshape
+p_wide <- freq_chr %>%
+  select(pos, TRT, REP, founder, freq) %>%
+  pivot_wider(names_from = founder, values_from = freq)
 
-    to_arr <- function(trt) {
-      arr <- array(NA_real_, c(nF, nF, nrepl))
-      for (r in seq_len(nrepl)) {
-        mat_vals <- w_err %>% filter(TRT == trt, REP == r) %>%
-                    arrange(fi, fj) %>% pull(v)
-        if (length(mat_vals) == nF^2) arr[,,r] <- matrix(mat_vals, nF, nF)
-      }
-      arr
-    }
-    covar1 <- to_arr("C"); covar2 <- to_arr("Z")
-    if (anyNA(covar1) || anyNA(covar2)) return(NULL)
+to_3d <- function(trt) {
+  m <- p_wide %>% filter(TRT == trt) %>%
+    arrange(pos, REP) %>%
+    select(all_of(founder_names)) %>%
+    as.matrix()                             # (W*nrepl) x nF, pos-major order
+  aperm(array(t(m), c(nF, nrepl, W)), c(3, 2, 1))  # W x nrepl x nF
+}
+P1 <- to_3d("C")
+P2 <- to_3d("Z")
 
-    # ── Pool replicates (effective-N weighting) ───────────────────────────────
-    N1e <- N2e <- numeric(nrepl)
-    cv1 <- cv2 <- array(0, c(nF, nF, nrepl))
-    for (r in seq_len(nrepl)) {
-      pm  <- (N1[r]*p1[r,] + N2[r]*p2[r,]) / (N1[r]+N2[r])
-      cm1 <- mn.covmat(pm, 2*N1[r]); cm2 <- mn.covmat(pm, 2*N2[r])
-      N1e[r] <- sum(diag(cm1))*4*N1[r]^2 /
-        (sum(diag(cm1))*2*N1[r] + 2*N1[r]*sum(diag(covar1[,,r])))
-      N2e[r] <- sum(diag(cm2))*4*N2[r]^2 /
-        (sum(diag(cm2))*2*N2[r] + 2*N2[r]*sum(diag(covar2[,,r])))
-      cv1[,,r] <- (cm1 + covar1[,,r]) * N1e[r]^2
-      cv2[,,r] <- (cm2 + covar2[,,r]) * N2e[r]^2
-    }
-    p1p <- as.vector(N1e %*% p1 / sum(N1e))
-    p2p <- as.vector(N2e %*% p2 / sum(N2e))
-    c1p <- rowSums(cv1, dims=2) / sum(N1e)^2
-    c2p <- rowSums(cv2, dims=2) / sum(N2e)^2
+# Covariance arrays: W x nF x nF x nrepl
+# array() fills fi-major; sort order must be (pos, REP, fj, fi)
+to_4d <- function(trt) {
+  v <- err_chr %>% filter(TRT == trt) %>%
+    arrange(pos, REP, fj, fi) %>% pull(v)
+  aperm(array(v, c(nF, nF, nrepl, W)), c(4, 1, 2, 3))  # W x fi x fj x nrepl
+}
+E1 <- to_4d("C")
+E2 <- to_4d("Z")
 
-    # ── Stabilized Wald test ──────────────────────────────────────────────────
-    df    <- nF - 1
-    covar <- c1p + c2p
-    eg    <- eigen(covar)
-    eval  <- pmax(eg$values[1:df], RIDGE_FRACTION * mean(eg$values[1:df]))
-    trafo <- diag(1/sqrt(eval)) %*% t(eg$vectors[,1:df])
-    tstat <- sum((trafo %*% (p1p - p2p))^2)
-    pval  <- exp(pchisq(tstat, df, lower.tail=FALSE, log.p=TRUE))
+# ── Per-window scan: array indexing only, no dplyr inside loop ───────────────
+cat(sprintf("Running Wald scan on %s (%d windows)...\n", mychr, W))
+df <- nF - 1L
 
-    # ── Heritability (same smoothed p1, p2 as Wald test) ─────────────────────
-    h2 <- tryCatch(
-      Heritability(p1, p2, nrepl, ProportionSelect, AF_CUTOFF),
-      error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_)
-    )
+scan_list <- lapply(seq_len(W), function(w) {
+  p1     <- matrix(P1[w,,], nrepl, nF)
+  p2     <- matrix(P2[w,,], nrepl, nF)
+  covar1 <- array(E1[w,,,], c(nF, nF, nrepl))
+  covar2 <- array(E2[w,,,], c(nF, nF, nrepl))
+  if (anyNA(p1) || anyNA(p2) || anyNA(covar1) || anyNA(covar2)) return(NULL)
 
-    tibble(chr         = key$CHROM,
-           pos         = key$pos,
-           Wald_log10p = -log10(pval),
-           Falc_H2     = h2$Falconer_H2,
-           Cutl_H2     = h2$Cutler_H2)
-  }) %>%
-  bind_rows()
+  # Pool replicates
+  N1e <- N2e <- numeric(nrepl)
+  cv1 <- cv2 <- array(0, c(nF, nF, nrepl))
+  for (r in seq_len(nrepl)) {
+    pm  <- (N1[r]*p1[r,] + N2[r]*p2[r,]) / (N1[r]+N2[r])
+    cm1 <- mn.covmat(pm, 2*N1[r]); cm2 <- mn.covmat(pm, 2*N2[r])
+    N1e[r] <- sum(diag(cm1))*4*N1[r]^2 /
+      (sum(diag(cm1))*2*N1[r] + 2*N1[r]*sum(diag(covar1[,,r])))
+    N2e[r] <- sum(diag(cm2))*4*N2[r]^2 /
+      (sum(diag(cm2))*2*N2[r] + 2*N2[r]*sum(diag(covar2[,,r])))
+    cv1[,,r] <- (cm1 + covar1[,,r]) * N1e[r]^2
+    cv2[,,r] <- (cm2 + covar2[,,r]) * N2e[r]^2
+  }
+  p1p <- as.vector(N1e %*% p1 / sum(N1e))
+  p2p <- as.vector(N2e %*% p2 / sum(N2e))
+  c1p <- rowSums(cv1, dims=2) / sum(N1e)^2
+  c2p <- rowSums(cv2, dims=2) / sum(N2e)^2
+
+  # Stabilized Wald test
+  covar <- c1p + c2p
+  eg    <- eigen(covar)
+  eval  <- pmax(eg$values[1:df], RIDGE_FRACTION * mean(eg$values[1:df]))
+  trafo <- diag(1/sqrt(eval)) %*% t(eg$vectors[,1:df])
+  tstat <- sum((trafo %*% (p1p - p2p))^2)
+
+  # Heritability
+  h2 <- tryCatch(
+    Heritability(p1, p2, nrepl, ProportionSelect, AF_CUTOFF),
+    error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_)
+  )
+
+  list(chr         = mychr,
+       pos         = win_pos[w],
+       Wald_log10p = -log10(pchisq(tstat, df, lower.tail = FALSE)),
+       Falc_H2     = h2$Falconer_H2,
+       Cutl_H2     = h2$Cutler_H2)
+})
+
+scan_results <- bind_rows(Filter(Negate(is.null), scan_list))
 
 # ── Add genetic position and write ───────────────────────────────────────────
 cat("Writing", fileout, "\n")
