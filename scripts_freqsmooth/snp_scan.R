@@ -167,66 +167,71 @@ results <- snp_df %>%
     snps_i <- snps[inform, ]
     n_s    <- nrow(S)
 
-    # ── Vectorized SNP frequency computation ─────────────────────────────────
-    # F_alt_C[s, r] = S[s,] · H_C[r,]  →  S %*% t(H_C)  (n_snps x nrepl)
-    F_alt_C <- S %*% t(H_C)   # n_snps x nrepl
+    # ── Vectorized SNP freq: all SNPs × all replicates at once ───────────────
+    # F_alt[s, r] = S[s,] · H[r,]  →  S %*% t(H)   (n_s × nrepl)
+    F_alt_C <- S %*% t(H_C)
     F_alt_Z <- S %*% t(H_Z)
 
-    # ── One Wald test per SNP ─────────────────────────────────────────────────
-    # (small nrepl so the pooling loop is fast)
-    Wald_log10p <- Falc_H2 <- Cutl_H2 <- rep(NA_real_, n_s)
+    # Broadcast N1/N2 to n_s × nrepl
+    N1_mat <- matrix(N1, n_s, nrepl, byrow = TRUE)
+    N2_mat <- matrix(N2, n_s, nrepl, byrow = TRUE)
 
-    for (si in seq_len(n_s)) {
-      s_vec <- S[si, ]
-      S2    <- rbind(1 - s_vec, s_vec)   # 2 x nF  (REF row, ALT row)
+    # Pool-mean ALT freq: n_s × nrepl
+    pm_alt <- (N1_mat * F_alt_C + N2_mat * F_alt_Z) / (N1_mat + N2_mat)
 
-      p1_mat <- cbind(1 - F_alt_C[si,], F_alt_C[si,])   # nrepl x 2
-      p2_mat <- cbind(1 - F_alt_Z[si,], F_alt_Z[si,])
-
-      # Propagate covariance: Sigma_SNP = S2 %*% Sigma_hap %*% t(S2)
-      cov1 <- array(NA_real_, c(2, 2, nrepl))
-      cov2 <- array(NA_real_, c(2, 2, nrepl))
-      for (r in seq_len(nrepl)) {
-        cov1[,,r] <- S2 %*% E_C[,,r] %*% t(S2)
-        cov2[,,r] <- S2 %*% E_Z[,,r] %*% t(S2)
-      }
-
-      # Pool replicates
-      N1e <- N2e <- numeric(nrepl)
-      cv1 <- cv2 <- array(0, c(2, 2, nrepl))
-      for (r in seq_len(nrepl)) {
-        pm  <- (N1[r]*p1_mat[r,] + N2[r]*p2_mat[r,]) / (N1[r]+N2[r])
-        cm1 <- mn.covmat(pm, 2*N1[r]); cm2 <- mn.covmat(pm, 2*N2[r])
-        N1e[r] <- sum(diag(cm1))*4*N1[r]^2 /
-          (sum(diag(cm1))*2*N1[r] + 2*N1[r]*sum(diag(cov1[,,r])))
-        N2e[r] <- sum(diag(cm2))*4*N2[r]^2 /
-          (sum(diag(cm2))*2*N2[r] + 2*N2[r]*sum(diag(cov2[,,r])))
-        cv1[,,r] <- (cm1 + cov1[,,r]) * N1e[r]^2
-        cv2[,,r] <- (cm2 + cov2[,,r]) * N2e[r]^2
-      }
-      p1p <- as.vector(N1e %*% p1_mat / sum(N1e))
-      p2p <- as.vector(N2e %*% p2_mat / sum(N2e))
-      c1p <- rowSums(cv1, dims=2) / sum(N1e)^2
-      c2p <- rowSums(cv2, dims=2) / sum(N2e)^2
-
-      # Wald test df=1
-      covar <- c1p + c2p
-      eg    <- eigen(covar)
-      eval  <- pmax(eg$values[1], RIDGE_FRACTION * mean(eg$values[1]))
-      trafo <- matrix(1/sqrt(eval)) %*% t(eg$vectors[,1,drop=FALSE])
-      tstat <- sum((trafo %*% (p1p - p2p))^2)
-      Wald_log10p[si] <- -log10(exp(pchisq(tstat, 1, lower.tail=FALSE, log.p=TRUE)))
-
-      # Biallelic heritability: pass ALT frequency column as a 1-founder matrix
-      h2 <- tryCatch(
-        Heritability(matrix(p1_mat[,2], nrepl, 1),
-                     matrix(p2_mat[,2], nrepl, 1),
-                     nrepl, ProportionSelect, AF_CUTOFF),
-        error = function(e) list(Falconer_H2=NA_real_, Cutler_H2=NA_real_)
-      )
-      Falc_H2[si] <- h2$Falconer_H2
-      Cutl_H2[si] <- h2$Cutler_H2
+    # Covariance propagation — loop is over nrepl only, not over SNPs
+    # var_alt[s,r] = s · E[,,r] · s  =  rowSums( (S %*% E[,,r]) * S )
+    Sm1       <- 1 - S
+    var_alt_C <- matrix(0, n_s, nrepl)
+    var_alt_Z <- matrix(0, n_s, nrepl)
+    var_ref_C <- matrix(0, n_s, nrepl)
+    var_ref_Z <- matrix(0, n_s, nrepl)
+    for (r in seq_len(nrepl)) {
+      var_alt_C[,r] <- rowSums((S   %*% E_C[,,r]) * S)
+      var_alt_Z[,r] <- rowSums((S   %*% E_Z[,,r]) * S)
+      var_ref_C[,r] <- rowSums((Sm1 %*% E_C[,,r]) * Sm1)
+      var_ref_Z[,r] <- rowSums((Sm1 %*% E_Z[,,r]) * Sm1)
     }
+
+    # sum(diag(mn.covmat(pm, 2*N))) for biallelic = pm*(1-pm)/N
+    sdcm1 <- pm_alt * (1 - pm_alt) / N1_mat
+    sdcm2 <- pm_alt * (1 - pm_alt) / N2_mat
+
+    # Effective N: n_s × nrepl
+    N1e <- 2 * sdcm1 * N1_mat / (sdcm1 + var_alt_C + var_ref_C)
+    N2e <- 2 * sdcm2 * N2_mat / (sdcm2 + var_alt_Z + var_ref_Z)
+
+    # Pooled frequencies: n_s vectors
+    sum_N1e <- rowSums(N1e)
+    sum_N2e <- rowSums(N2e)
+    p1p <- rowSums(N1e * F_alt_C) / sum_N1e
+    p2p <- rowSums(N2e * F_alt_Z) / sum_N2e
+
+    # Pooled ALT variance — [2,2] element of the 2×2 covariance: n_s
+    cm1_22 <- pm_alt * (1 - pm_alt) / (2 * N1_mat)
+    cm2_22 <- pm_alt * (1 - pm_alt) / (2 * N2_mat)
+    c1p_22 <- rowSums((cm1_22 + var_alt_C) * N1e^2) / sum_N1e^2
+    c2p_22 <- rowSums((cm2_22 + var_alt_Z) * N2e^2) / sum_N2e^2
+
+    # Wald test df=1: (delta_f)^2 / combined_var — all SNPs at once
+    tstat       <- (p1p - p2p)^2 / (c1p_22 + c2p_22)
+    Wald_log10p <- -log10(pchisq(tstat, 1L, lower.tail = FALSE))
+
+    # ── Vectorized heritability ────────────────────────────────────────────────
+    Prop_mat    <- matrix(ProportionSelect$Proportion, n_s, nrepl, byrow = TRUE)
+    Falcon_i_sq <- matrix(
+      (dnorm(qnorm(1 - ProportionSelect$Proportion)) / ProportionSelect$Proportion)^2,
+      n_s, nrepl, byrow = TRUE)
+
+    # Falconer H²
+    H2temp  <- (F_alt_Z - F_alt_C)^2 / pmax(F_alt_C, AF_CUTOFF)
+    Falc_H2 <- 200 * rowMeans(H2temp / Falcon_i_sq)
+
+    # Cutler H²
+    pen     <- (F_alt_Z * Prop_mat) / F_alt_C
+    pen     <- pmax(pmin(pen, 2 * Prop_mat), Prop_mat / 2)
+    Affect  <- qnorm(1 - Prop_mat) - qnorm(1 - pen)
+    Cutl_H2 <- 200 * rowMeans(Affect^2 * F_alt_C)
 
     tibble(chr                    = mychr,
            pos                    = snps_i$POS,
