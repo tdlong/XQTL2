@@ -12,7 +12,7 @@ library(tidyverse)
 MEANS_FILE <- "MALATHION_TEST_v2_smooth125.hap/MALATHION_TEST_v2_smooth125.meansBySample.txt"
 FOUNDER    <- "A3"
 CHR        <- "chr3L"
-OUT_FILE   <- paste0("qc_means_", FOUNDER, "_", CHR, ".png")
+OUT_FILE   <- file.path(dirname(MEANS_FILE), paste0("qc_means_", FOUNDER, "_", CHR, ".png"))
 
 df <- read.table(MEANS_FILE, header = TRUE) %>%
   filter(founder == FOUNDER, chr == CHR) %>%
@@ -29,10 +29,10 @@ p <- ggplot(df, aes(x = pos_mb, y = freq, colour = Rep, linetype = Pool)) +
   scale_linetype_manual(values = c(Control = "dashed", Selected = "solid")) +
   scale_colour_brewer(palette = "Dark2") +
   labs(
-    title   = paste(FOUNDER, "smoothed frequency —", CHR),
-    x       = "Position (Mb)",
-    y       = "Founder frequency",
-    colour  = "Replicate",
+    title    = paste(FOUNDER, "smoothed frequency —", CHR),
+    x        = "Position (Mb)",
+    y        = "Founder frequency",
+    colour   = "Replicate",
     linetype = "Treatment"
   ) +
   theme_classic(base_size = 11) +
