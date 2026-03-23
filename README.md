@@ -450,14 +450,59 @@ tar xzf <scan_name>.tar.gz
 
 | File | Contents |
 |------|----------|
-| `<scan>.scan.txt` | Haplotype scan: Wald -log10(p), Falconer H², Cutler H² per window |
-| `<scan>.meansBySample.txt` | Smoothed founder haplotype frequencies per sample per replicate |
-| `<scan>.snp_scan.txt` | SNP scan: Wald -log10(p) per SNP (if SNP scan was run) |
-| `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies per sample per replicate (if SNP scan was run) |
+| `<scan>.scan.txt` | Haplotype scan results (one row per window) |
+| `<scan>.meansBySample.txt` | Smoothed founder haplotype frequencies (one row per window × treatment × replicate × founder) |
+| `<scan>.snp_scan.txt` | SNP scan results (one row per SNP; if SNP scan was run) |
+| `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies (one row per SNP × treatment × replicate; if SNP scan was run) |
 | `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
 | `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
 | `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan (if SNP scan was run) |
 | `<scan>.5panel.*.png`, `<scan>.Manhattan.png` | Quick-look plots from concat step |
+
+### Output file formats
+
+**`<scan>.scan.txt`** — haplotype scan (produced by `hap_scan.R`, one row per haplotype window):
+
+| Column | Description |
+|--------|-------------|
+| `chr` | Chromosome |
+| `pos` | Window center (bp) |
+| `Wald_log10p` | -log10(p) from Wald test |
+| `Falc_H2` | Falconer heritability estimate |
+| `Cutl_H2` | Cutler heritability estimate |
+| `cM` | Genetic map position (centiMorgans) |
+
+**`<scan>.meansBySample.txt`** — smoothed founder frequencies (produced by `smooth_haps.R`):
+
+| Column | Description |
+|--------|-------------|
+| `chr` | Chromosome |
+| `pos` | Window center (bp) |
+| `TRT` | Treatment: `C` (control) or `Z` (selected) |
+| `REP` | Replicate number |
+| `founder` | Founder name (e.g. A1, A2, ..., AB8) |
+| `freq` | Smoothed founder haplotype frequency |
+
+**`<scan>.snp_scan.txt`** — SNP scan (produced by `snp_scan.R`, one row per SNP):
+
+| Column | Description |
+|--------|-------------|
+| `chr` | Chromosome |
+| `pos` | SNP position (bp) |
+| `Wald_log10p` | -log10(p) from Wald test |
+| `cM` | Genetic map position (centiMorgans) |
+| `n_informative_founders` | Number of founders carrying the ALT allele |
+
+**`<scan>.snp_meansBySample.txt`** — imputed SNP frequencies (produced by `snp_scan.R`):
+
+| Column | Description |
+|--------|-------------|
+| `chr` | Chromosome |
+| `pos` | SNP position (bp) |
+| `TRT` | Treatment: `C` (control) or `Z` (selected) |
+| `REP` | Replicate number |
+| `F_alt` | Imputed ALT allele frequency |
+| `cM` | Genetic map position (centiMorgans) |
 
 ### Interactive exploration (optional)
 
