@@ -11,20 +11,33 @@
 #       --dir       process/<project> \
 #       --scan      <scan_name> \
 #       --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-#       --founders  A1,A2,A3,A4,A5,A6,A7,AB8 \
-#       --after     <jobid>
+#       --founders       A1,A2,A3,A4,A5,A6,A7,AB8 \
+#       --mem-per-cpu    6G \
+#       --cpus-per-task  2 \
+#       -p               highmem \
+#       --after          <jobid>
 
 set -e
+
+# ── Defaults ────────────────────────────────────────────────────────────────────
+MEM_PER_CPU=3G
+CPUS_PER_TASK=1
+PARTITION=standard
+ACCOUNT=tdlong_lab
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --design)    DESIGN="$2";    shift 2 ;;
-    --dir)       DIR="$2";       shift 2 ;;
-    --scan)      SCAN="$2";      shift 2 ;;
-    --snp-table) SNP_TABLE="$2"; shift 2 ;;
-    --founders)  FOUNDERS="$2";  shift 2 ;;
-    --after)     AFTER="$2";     shift 2 ;;
+    --design)        DESIGN="$2";       shift 2 ;;
+    --dir)           DIR="$2";          shift 2 ;;
+    --scan)          SCAN="$2";         shift 2 ;;
+    --snp-table)     SNP_TABLE="$2";    shift 2 ;;
+    --founders)      FOUNDERS="$2";     shift 2 ;;
+    --mem-per-cpu)   MEM_PER_CPU="$2";  shift 2 ;;
+    --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
+    -p|--partition)  PARTITION="$2";    shift 2 ;;
+    -A|--account)    ACCOUNT="$2";      shift 2 ;;
+    --after)         AFTER="$2";        shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -50,6 +63,7 @@ DEP=""
 
 # ── SNP scan ─────────────────────────────────────────────────────────────────
 jid_snp=$(sbatch --parsable ${DEP} \
+    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
     --array=1-5 scripts/snp_scan.sh \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
@@ -60,7 +74,7 @@ echo "snp_scan:   $jid_snp"
 
 # ── concat SNP scan chromosomes ──────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
+    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} --time=1:00:00 \
     --wrap="bash scripts/concat_scans.sh --snp ${OUTDIR}")
 echo "snp_concat: $jid_concat"
 

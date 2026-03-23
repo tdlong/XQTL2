@@ -55,14 +55,16 @@ full partition details.
 Every script explicitly requests memory. Scan steps were profiled with `seff`
 on the malathion test dataset (2 replicates, 4 samples). Larger experiments
 will scale proportionally. Baseline request is 1 CPU × 3G — there is little
-gain in requesting less.
+gain in requesting less. For Steps 5–6, `run_scan.sh` and `run_snp_scan.sh`
+accept `--mem-per-cpu`, `--cpus-per-task`, `-p`, and `-A` to override
+resources and partition for all jobs they submit.
 
 | Script | Step | Partition | CPUs | Mem/CPU | Time | Profiled (malathion test) |
 |--------|------|-----------|------|---------|------|--------------------------|
 | `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | `bwa -t 4` uses 4 threads; `java -Xmx20g` needs ~20G |
 | `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 5 days | bcftools mpileup, I/O-bound |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | large haplotype matrices require highmem |
-| `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall (override via `run_scan.sh --mem-per-cpu --cpus-per-task`) |
+| `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
 | `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
 | concat | 5a | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
@@ -239,8 +241,10 @@ dependency chaining.
 | `--dir` | (required) | Project directory (e.g. `process/<project>`) |
 | `--scan` | (required) | Scan name — becomes output subdirectory |
 | `--smooth` | 250 | Smoothing half-window in kb |
-| `--mem-per-cpu` | 3G | Memory per CPU for smooth_haps (SLURM `--mem-per-cpu`) |
-| `--cpus-per-task` | 1 | CPUs for smooth_haps (SLURM `--cpus-per-task`) |
+| `--mem-per-cpu` | 3G | Memory per CPU for all jobs (SLURM `--mem-per-cpu`) |
+| `--cpus-per-task` | 1 | CPUs for all jobs (SLURM `--cpus-per-task`) |
+| `-p` / `--partition` | standard | SLURM partition (e.g. `highmem`) |
+| `-A` / `--account` | tdlong_lab | SLURM account to charge |
 | `--after` | (none) | SLURM job ID to wait on before starting |
 
 ### Smoothing window
@@ -315,6 +319,10 @@ directory alongside the haplotype scan results.
 | `--scan` | (required) | Scan name (same as Step 5a) |
 | `--snp-table` | (required) | SNP frequency table |
 | `--founders` | (required) | Comma-separated founder names matching SNP table columns |
+| `--mem-per-cpu` | 3G | Memory per CPU for all jobs (SLURM `--mem-per-cpu`) |
+| `--cpus-per-task` | 1 | CPUs for all jobs (SLURM `--cpus-per-task`) |
+| `-p` / `--partition` | standard | SLURM partition (e.g. `highmem`) |
+| `-A` / `--account` | tdlong_lab | SLURM account to charge |
 | `--after` | (none) | SLURM job ID to wait on (e.g. from run_scan.sh) |
 
 ---
