@@ -9,12 +9,14 @@
 #       --dir     process/<project> \
 #       --scan    <scan_name> \
 #       --smooth  250 \
+#       --mem     6G \
 #       --after   <jobid>
 
 set -e
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOOTH_KB=250
+MEM_PER_CPU=3G
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -23,6 +25,7 @@ while [[ $# -gt 0 ]]; do
     --dir)    DIR="$2";       shift 2 ;;
     --scan)   SCAN="$2";      shift 2 ;;
     --smooth) SMOOTH_KB="$2"; shift 2 ;;
+    --mem)    MEM_PER_CPU="$2"; shift 2 ;;
     --after)  AFTER="$2";     shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -48,6 +51,7 @@ DEP_SMOOTH=""
 
 # ── smooth haplotype frequencies ─────────────────────────────────────────────
 jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
+    --mem-per-cpu=${MEM_PER_CPU} \
     --array=1-5 scripts/smooth_haps.sh \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
