@@ -72,10 +72,14 @@ win_positions <- freq_smoothed %>%
   pull(pos)
 W <- length(win_positions)
 
-# ── Load SNP table for this chromosome ───────────────────────────────────────
+# ── Load SNP table for this chromosome only ──────────────────────────────────
+# Filter during read to avoid loading the full multi-chromosome table into memory.
 cat("Reading SNP table for", mychr, "...\n")
-snp_df <- read.table(parsed$snp_table, header = TRUE) %>%
-  filter(CHROM == mychr)
+snp_header <- names(data.table::fread(parsed$snp_table, nrows = 0))
+snp_df <- data.table::fread(
+  cmd = sprintf("zcat %s | awk 'NR==1 || $1==\"%s\"'", parsed$snp_table, mychr)
+) %>% as_tibble()
+names(snp_df) <- snp_header
 cat(sprintf("  %d SNPs\n", nrow(snp_df)))
 
 if (nrow(snp_df) == 0) {
