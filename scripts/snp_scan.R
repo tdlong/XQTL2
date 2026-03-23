@@ -12,7 +12,7 @@
 # SNPs are grouped by their nearest haplotype window. Within each window group,
 # the frequency computation is a single matrix multiply (vectorized over all
 # SNPs in the group), and the propagated covariance is computed likewise.
-# The stabilized Wald test (df=1) and biallelic heritability follow.
+# The stabilized Wald test (df=1) follows.
 #
 # Usage:
 #   Rscript scripts/snp_scan.R \
@@ -50,8 +50,9 @@ founders <- parsed$founders
 design.df <- read.table(parsed$rfile, header = TRUE)
 source("scripts/scan_functions.R")
 
-filein  <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
-fileout <- file.path(parsed$dir, paste0(parsed$outdir, ".snp_scan.", mychr, ".txt"))
+filein        <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
+fileout       <- file.path(parsed$dir, paste0(parsed$outdir, ".snp_scan.", mychr, ".txt"))
+fileout_means <- file.path(parsed$dir, paste0(parsed$outdir, ".snp_meansBySample.", mychr, ".txt"))
 
 options(dplyr.summarise.inform = FALSE)
 
@@ -62,9 +63,6 @@ freq_smoothed <- sm$freq
 err_smoothed  <- sm$err
 nrepl         <- sm$nrepl
 nF            <- length(founders)
-
-ProportionSelect <- design.df %>%
-  filter(TRT == "Z") %>% select(REP, Proportion) %>% arrange(REP)
 
 # Window positions for nearest-join
 win_positions <- freq_smoothed %>%
@@ -82,9 +80,11 @@ cat(sprintf("  %d SNPs\n", nrow(snp_df)))
 
 if (nrow(snp_df) == 0) {
   tibble(chr=character(), pos=integer(), Wald_log10p=numeric(),
-         Falc_H2=numeric(), Cutl_H2=numeric(), cM=numeric(),
-         n_informative_founders=integer()) %>%
+         cM=numeric(), n_informative_founders=integer()) %>%
     write.table(fileout)
+  tibble(chr=character(), pos=integer(), TRT=character(),
+         REP=integer(), F_alt=numeric(), cM=numeric()) %>%
+    write.table(fileout_means)
   quit(save="no")
 }
 
@@ -138,7 +138,7 @@ N2 <- freq_chr %>% filter(TRT=="Z", CHROM==mychr) %>%
 cat(sprintf("Running SNP scan (%d SNPs across %d windows)...\n",
             nrow(snp_df), W))
 
-results <- snp_df %>%
+all_results <- snp_df %>%
   group_by(win_idx) %>%
   group_map(function(snps, key) {
 
@@ -217,33 +217,35 @@ results <- snp_df %>%
     tstat       <- (p1p - p2p)^2 / (c1p_22 + c2p_22)
     Wald_log10p <- -log10(pchisq(tstat, 1L, lower.tail = FALSE))
 
-    # ── Vectorized heritability ────────────────────────────────────────────────
-    Prop_mat    <- matrix(ProportionSelect$Proportion, n_s, nrepl, byrow = TRUE)
-    Falcon_i_sq <- matrix(
-      (dnorm(qnorm(1 - ProportionSelect$Proportion)) / ProportionSelect$Proportion)^2,
-      n_s, nrepl, byrow = TRUE)
+    # ── Per-sample imputed ALT frequencies (long format) ─────────────────────
+    means_tib <- bind_rows(
+      tibble(chr = mychr, pos = rep(snps_i$POS, each = nrepl),
+             TRT = "C", REP = rep(seq_len(nrepl), n_s),
+             F_alt = as.vector(t(F_alt_C)), cM = rep(snps_i$cM, each = nrepl)),
+      tibble(chr = mychr, pos = rep(snps_i$POS, each = nrepl),
+             TRT = "Z", REP = rep(seq_len(nrepl), n_s),
+             F_alt = as.vector(t(F_alt_Z)), cM = rep(snps_i$cM, each = nrepl))
+    )
 
-    # Falconer H²
-    H2temp  <- (F_alt_Z - F_alt_C)^2 / pmax(F_alt_C, AF_CUTOFF)
-    Falc_H2 <- 200 * rowMeans(H2temp / Falcon_i_sq)
+    list(
+      scan = tibble(chr                    = mychr,
+                    pos                    = snps_i$POS,
+                    Wald_log10p            = Wald_log10p,
+                    cM                     = snps_i$cM,
+                    n_informative_founders = as.integer(rowSums(S > 0.5))),
+      means = means_tib
+    )
+  })
 
-    # Cutler H²
-    pen     <- (F_alt_Z * Prop_mat) / F_alt_C
-    pen     <- pmax(pmin(pen, 2 * Prop_mat), Prop_mat / 2)
-    Affect  <- qnorm(1 - Prop_mat) - qnorm(1 - pen)
-    Cutl_H2 <- 200 * rowMeans(Affect^2 * F_alt_C)
-
-    tibble(chr                    = mychr,
-           pos                    = snps_i$POS,
-           Wald_log10p            = Wald_log10p,
-           Falc_H2                = Falc_H2,
-           Cutl_H2                = Cutl_H2,
-           cM                     = snps_i$cM,
-           n_informative_founders = as.integer(rowSums(S > 0.5)))
-  }) %>%
-  bind_rows() %>%
-  filter(!is.na(Wald_log10p))
+results <- map(all_results, "scan")  %>% compact() %>% bind_rows() %>% filter(!is.na(Wald_log10p))
+means   <- map(all_results, "means") %>% compact() %>% bind_rows()
 
 cat("Writing", fileout, "\n")
 write.table(results, fileout)
-cat(sprintf("Done. %d SNPs written.\n", nrow(results)))
+cat(sprintf("  %d SNPs\n", nrow(results)))
+
+cat("Writing", fileout_means, "\n")
+write.table(means, fileout_means)
+cat(sprintf("  %d rows\n", nrow(means)))
+
+cat("Done.\n")

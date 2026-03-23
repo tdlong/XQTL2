@@ -280,11 +280,16 @@ concatenate chromosomes.
 
 ## Step 5b — SNP scan (optional)
 
-The SNP scan imputes per-SNP allele frequencies from the smoothed haplotype
+The SNP scan imputes per-SNP ALT allele frequencies from the smoothed haplotype
 estimates produced in Step 5a, then runs a Wald test (df=1) at every SNP.
 This tests at individual SNP positions rather than haplotype windows, but
 the signal comes from the same smoothed haplotype estimates — it is not
 independent of the haplotype scan.
+
+Outputs: `snp_scan.txt` (Wald -log10(p) per SNP) and `snp_meansBySample.txt`
+(imputed ALT frequency per SNP per treatment per replicate). Heritability is
+not estimated at the SNP level — H² is a property of genomic regions, not
+individual SNPs (see Step 5a for H² estimates).
 
 The SNP scan uses the same smoothed data as the haplotype scan, so `run_scan.sh`
 (Step 5a) must have already run. Use `--after` to chain it after a running scan,
@@ -446,8 +451,9 @@ tar xzf <scan_name>.tar.gz
 | File | Contents |
 |------|----------|
 | `<scan>.scan.txt` | Haplotype scan: Wald -log10(p), Falconer H², Cutler H² per window |
-| `<scan>.meansBySample.txt` | Smoothed founder frequencies per sample (QC) |
-| `<scan>.snp_scan.txt` | SNP-level Wald -log10(p) (if SNP scan was run) |
+| `<scan>.meansBySample.txt` | Smoothed founder haplotype frequencies per sample per replicate |
+| `<scan>.snp_scan.txt` | SNP scan: Wald -log10(p) per SNP (if SNP scan was run) |
+| `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies per sample per replicate (if SNP scan was run) |
 | `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
 | `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
 | `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan (if SNP scan was run) |
