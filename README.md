@@ -62,7 +62,7 @@ gain in requesting less.
 | `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | `bwa -t 4` uses 4 threads; `java -Xmx20g` needs ~20G |
 | `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 5 days | bcftools mpileup, I/O-bound |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | large haplotype matrices require highmem |
-| `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
+| `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall (override via `run_scan.sh --mem-per-cpu --cpus-per-task`) |
 | `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
 | concat | 5a | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
@@ -239,6 +239,8 @@ dependency chaining.
 | `--dir` | (required) | Project directory (e.g. `process/<project>`) |
 | `--scan` | (required) | Scan name — becomes output subdirectory |
 | `--smooth` | 250 | Smoothing half-window in kb |
+| `--mem-per-cpu` | 3G | Memory per CPU for smooth_haps (SLURM `--mem-per-cpu`) |
+| `--cpus-per-task` | 1 | CPUs for smooth_haps (SLURM `--cpus-per-task`) |
 | `--after` | (none) | SLURM job ID to wait on before starting |
 
 ### Smoothing window
