@@ -2,9 +2,12 @@
 ###############################################################################
 # smooth_haps.R  —  Step 1 of the freqsmooth pipeline
 #
-# Reads R.haps.<chr>.out.rds. Unnests haplotype frequencies and reconstruction
-# covariance matrices to long format, applies a running mean across windows
-# within each (TRT, REP, founder) / (TRT, REP, i, j) group, then saves:
+# Reads R.haps.<chr>.out.rds. Masks unresolvable founder frequencies to NA
+# (founders that cluster together at a window have arbitrary individual
+# estimates — only their sum is constrained). Then unnests to long format
+# and applies a running mean across windows within each
+# (TRT, REP, founder) / (TRT, REP, i, j) group. The NA-safe running mean
+# linearly interpolates through masked gaps from flanking valid data. Saves:
 #   <outdir>/<scan>.smooth.<chr>.rds       -- smoothed data for steps 2 & 3
 #   <outdir>/<scan>.meansBySample.<chr>.txt -- smoothed per-founder frequencies
 #
@@ -73,14 +76,30 @@ options(dplyr.summarise.inform = FALSE)
 # Then group_by(TRT, REP, founder) and mutate running_mean across windows
 cat("Smoothing frequencies...\n")
 
-freq_smoothed <- xx1 %>%
-  select(CHROM, pos, sample, Haps, Names) %>%
-  unnest(c(sample, Haps, Names)) %>%
-  unnest(c(Haps, Names)) %>%
-  rename(pool = sample, freq = Haps, founder = Names) %>%
+freq_raw <- xx1 %>%
+  select(CHROM, pos, sample, Haps, Names, Groups) %>%
+  unnest(c(sample, Haps, Names, Groups)) %>%
+  unnest(c(Haps, Names, Groups)) %>%
+  rename(pool = sample, freq = Haps, founder = Names, group = Groups) %>%
   left_join(design.df, by = c("pool" = "bam")) %>%
   filter(!is.na(TRT)) %>%
-  mutate(Num = sexlink * Num) %>%
+  mutate(Num = sexlink * Num)
+
+# Mask unresolvable founders: if >1 founder shares a group at a window,
+# those founders' frequencies are arbitrary — set to NA so the smoother
+# interpolates from flanking valid data.
+freq_raw <- freq_raw %>%
+  group_by(CHROM, pos, pool, group) %>%
+  mutate(group_size = n()) %>%
+  ungroup() %>%
+  mutate(freq = if_else(group_size > 1L, NA_real_, freq))
+
+n_masked <- sum(is.na(freq_raw$freq))
+n_total  <- nrow(freq_raw)
+cat(sprintf("  Masked %d / %d founder-window estimates (%.1f%%) as unresolvable\n",
+            n_masked, n_total, 100 * n_masked / n_total))
+
+freq_smoothed <- freq_raw %>%
   group_by(CHROM, pos, TRT, REP, founder) %>%
   summarize(freq = mean(freq, na.rm = TRUE),
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
