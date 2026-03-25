@@ -23,7 +23,5 @@ data/
 ref/
 figures/
 process/
-scripts_oneoffs/
-
 # temp folder inside scripts
 scripts/temp/
