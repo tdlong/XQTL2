@@ -35,3 +35,7 @@ echo "====== DIRECTORY SIZES (depth 2) ======"
 find . -maxdepth 2 -not -path './.git/*' -type d | \
     xargs du -sh 2>/dev/null | sort -rh
 echo ""
+
+echo "====== IGNORED .sh AND .R FILES (potential lost scripts) ======"
+git ls-files --others --ignored --exclude-standard | grep -E '\.(sh|R)$'
+echo ""
