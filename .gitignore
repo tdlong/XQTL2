@@ -25,3 +25,10 @@ figures/
 process/
 # temp folder inside scripts
 scripts/temp/
+
+# configs folder exists publicly but contents are private
+configs/*
+!configs/.gitkeep
+
+# one-off cluster state output
+check_cluster_state.out.txt
