@@ -1,0 +1,9 @@
+"bam" "TRT" "REP" "REPrep" "Num" "Proportion"
+"1" "F_sn_wt" "Z" 1 1 139 0.067
+"2" "F_wt_wt" "C" 1 1 486 NA
+"3" "F_wt_lz" "Z" 2 1 138 0.067
+"4" "F_mt_mt" "C" 2 1 483 NA
+"5" "M_sn_wt" "Z" 3 1 109 0.067
+"6" "M_wt_wt" "C" 3 1 489 NA
+"7" "M_wt_lz" "Z" 4 1 211 0.067
+"8" "M_mt_mt" "C" 4 1 481 NA
