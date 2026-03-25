@@ -1,0 +1,9 @@
+bam	TRT	REP	REPrep	Num	Proportion
+F_XO_y_pl	Z	1	1	75	0.01
+F_NO_pl_pl	C	1	1	500	NA
+F_XO_pl_w	Z	2	1	75	0.01
+F_NO_y_w	C	2	1	500	NA
+M_XO_y_pl	Z	3	1	75	0.01
+M_NO_pl_pl	C	3	1	500	NA
+M_XO_pl_w	Z	4	1	75	0.01
+M_NO_y_w	C	4	1	500	NA

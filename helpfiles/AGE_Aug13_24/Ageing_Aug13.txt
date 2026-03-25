@@ -1,0 +1,13 @@
+"bam" "samples" "Num" "TRT" "REP" "REPrep" "Proportion"
+"1" "R1con" "Con_1_1" 570 "C" 1 1 NA
+"2" "R1age" "Age_1_1" 1177 "Z" 1 1 0.113
+"3" "R2con" "Con_2_1" 520 "C" 2 1 NA
+"4" "R2age" "Age_2_1" 814 "Z" 2 1 0.087
+"5" "R3con" "Con_3_1" 610 "C" 3 1 NA
+"6" "R3age" "Age_3_1" 482 "Z" 3 1 0.04
+"7" "R4con" "Con_4_1" 580 "C" 4 1 NA
+"8" "R4age" "Age_4_1" 997 "Z" 4 1 0.08
+"9" "R5con" "Con_5_1" 640 "C" 5 1 NA
+"10" "R5age" "Age_5_1" 542 "Z" 5 1 0.045
+"11" "R6con" "Con_6_1" 610 "C" 6 1 NA
+"12" "R6age" "Age_6_1" 647 "Z" 6 1 0.053

@@ -1,0 +1,15 @@
+"filesize" "bam" "longTRT" "Replicate" "Sex" "TRT" "REP" "REPrep" "Num" "Proportion"
+"1" 4022843197 "AgeSY20_R1_F" "AgeSY20" "R1" "F" "Z" 1 1 834 0.0953
+"2" 4863519639 "AgeSY20_R2_F" "AgeSY20" "R2" "F" "Z" 2 1 431 0.0399
+"3" 8130803515 "AgeSY20_R3_F" "AgeSY20" "R3" "F" "Z" 3 1 456 0.0437
+"4" 11303507752 "AgeSY20_R4_F" "AgeSY20" "R4" "F" "Z" 4 1 348 0.0309
+"5" 7770139648 "AgeSY20_R5_F" "AgeSY20" "R5" "F" "Z" 5 1 491 0.0491
+"6" 9787118304 "AgeSY20_R6_F" "AgeSY20" "R6" "F" "Z" 6 1 585 0.058
+"7" 5112820324 "AgeSY20_R7_F" "AgeSY20" "R7" "F" "Z" 7 1 538 0.0512
+"8" 4880831899 "Con_R1_F" "Con" "R1" "F" "C" 1 1 720 NA
+"9" 3817195883 "Con_R2_F" "Con" "R2" "F" "C" 2 1 715 NA
+"10" 6733252878 "Con_R3_F" "Con" "R3" "F" "C" 3 1 610 NA
+"11" 7854126764 "Con_R4_F" "Con" "R4" "F" "C" 4 1 720 NA
+"12" 17113491213 "Con_R5_F" "Con" "R5" "F" "C" 5 1 710 NA
+"13" 8880575554 "Con_R6_F" "Con" "R6" "F" "C" 6 1 835 NA
+"14" 9313916692 "Con_R7_F" "Con" "R7" "F" "C" 7 1 635 NA

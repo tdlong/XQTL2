@@ -1,0 +1,15 @@
+"filesize" "bam" "longTRT" "Replicate" "Sex" "TRT" "REP" "REPrep" "Num" "Proportion"
+"1" 4114764322 "AgeSY10_R1_M" "AgeSY10" "R1" "M" "Z" 1 1 582 0.0694
+"2" 4650288875 "AgeSY10_R2_M" "AgeSY10" "R2" "M" "Z" 2 1 574 0.0536
+"3" 11718182632 "AgeSY10_R3_M" "AgeSY10" "R3" "M" "Z" 3 1 444 0.0426
+"4" 4370630893 "AgeSY10_R4_M" "AgeSY10" "R4" "M" "Z" 4 1 685 0.062
+"5" 11378149430 "AgeSY10_R5_M" "AgeSY10" "R5" "M" "Z" 5 1 849 0.0847
+"6" 8340575666 "AgeSY10_R6_M" "AgeSY10" "R6" "M" "Z" 6 1 541 0.0543
+"7" 3448887356 "AgeSY10_R7_M" "AgeSY10" "R7" "M" "Z" 7 1 592 0.0569
+"8" 4450766880 "Con_R1_M" "Con" "R1" "M" "C" 1 1 720 NA
+"9" 4004710209 "Con_R2_M" "Con" "R2" "M" "C" 2 1 715 NA
+"10" 5674167097 "Con_R3_M" "Con" "R3" "M" "C" 3 1 610 NA
+"11" 10092738655 "Con_R4_M" "Con" "R4" "M" "C" 4 1 720 NA
+"12" 8539194999 "Con_R5_M" "Con" "R5" "M" "C" 5 1 705 NA
+"13" 6638741271 "Con_R6_M" "Con" "R6" "M" "C" 6 1 832 NA
+"14" 8055925476 "Con_R7_M" "Con" "R7" "M" "C" 7 1 635 NA

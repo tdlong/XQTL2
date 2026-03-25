@@ -1,0 +1,7 @@
+"filesize" "bam" "A" "Sex" "longTRT" "REP" "REPrep" "Num" "Proportion" "TRT"
+"1" 7535619860 "STV2_F_Con" "STV2" "F" "Con" 2 1 1387 NA "C"
+"2" 5874726027 "STV2_F_Sus" "STV2" "F" "Sus" 2 1 239 0.1243 "Z"
+"3" 8173583358 "STV3_F_Con" "STV3" "F" "Con" 3 1 1631 NA "C"
+"4" 7651836266 "STV3_F_Sus" "STV3" "F" "Sus" 3 1 182 0.0916 "Z"
+"5" 10790183756 "STV4_F_Con" "STV4" "F" "Con" 4 1 1628 NA "C"
+"6" 10778684382 "STV4_F_Sus" "STV4" "F" "Sus" 4 1 177 0.0904 "Z"

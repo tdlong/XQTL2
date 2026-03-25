@@ -1,0 +1,8 @@
+B6885_F_sn_wt_S9	F_sn_wt
+B6885_F_wt_lz_S10	F_wt_lz
+B6885_M_sn_wt_S11	M_sn_wt
+B6885_M_wt_lz_S12	M_wt_lz
+B6885_F_wt_wt_S13	F_wt_wt
+B6885_F_mt_mt_S14	F_mt_mt
+B6885_M_wt_wt_S15	M_wt_wt
+B6885_M_mt_mt_S16	M_mt_mt

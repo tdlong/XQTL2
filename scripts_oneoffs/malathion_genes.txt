@@ -1,0 +1,4 @@
+gene	chr	Mb
+Ace	chr3R	9.069721
+Cyp6g1	chr2R	12.185667
+Mdr65	chr3L	6.240500
