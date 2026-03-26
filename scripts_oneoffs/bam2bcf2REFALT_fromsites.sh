@@ -24,6 +24,7 @@
 #       consolidate_refalt_fromsites.R which fills missing sites with 0).
 
 module load bcftools/1.21
+module load samtools/1.15.1
 
 ref="ref/dm6.fa"
 bam=$1
@@ -32,8 +33,9 @@ output=$3
 
 mkdir -p $output
 
-# Sample name from BAM filename (matches original pipeline convention)
-samplename=$(basename $bam .bam)
+# Sample name from BAM header SM tag — matches how bcftools query -l names samples
+# (filenames like AB8.dedup.bam and B5.RG.bam have SM tags AB8 and B5)
+samplename=$(samtools view -H $bam | awk '/^@RG/{for(i=1;i<=NF;i++) if($i~/^SM:/) {sub("SM:","",$i); print $i; exit}}')
 
 declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
