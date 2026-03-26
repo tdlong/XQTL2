@@ -1,5 +1,26 @@
 # Founder-Sites RefAlt Pipeline — Validation Plan
 
+## Current Status — 2026-03-26
+
+ZINC2 validation run submitted on HPC3. All 4 phases queued with dependencies.
+
+| Phase | Job ID | Status |
+|-------|--------|--------|
+| 1 — Founder site catalog | 50234868 (array 1-5) | submitted |
+| 2 — Per-sample RefAlt (60 samples) | see logs/ZINC2_fromsites/jobs.log | submitted |
+| 3 — Consolidation | 50234934 (array 1-5) | waiting on Phase 2 |
+| 4 — Comparison | 50234935 | waiting on Phase 3 |
+
+**When returning:** check results with:
+```bash
+cat logs/ZINC2_fromsites/compare.50234935.out
+bash scripts_oneoffs/profile_jobs.sh logs/ZINC2_fromsites/jobs.log
+```
+
+Key question: are counts exactly identical at shared sites, and how many sites drop out of the founder-only catalog vs the original joint-called RefAlt?
+
+---
+
 ## Motivation
 
 The current BAM → RefAlt step (bam2bcf2REFALT.sh) runs joint variant calling across
