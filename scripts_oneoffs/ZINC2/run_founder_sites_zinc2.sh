@@ -43,7 +43,6 @@ echo "Phase 2: Submitting per-sample jobs..."
 jid2_dep=""
 n=0
 while read bam; do
-  [[ $bam == /dfs7* ]] && continue   # skip founder lines
   sample=$(basename $bam .bam)
   jid=$(sbatch $dep1 \
                --output=${LOGS}/${sample}.%A_%a.out \

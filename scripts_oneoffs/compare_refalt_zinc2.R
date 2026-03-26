@@ -35,10 +35,10 @@ results <- lapply(chrs, function(chr) {
 
   message("\n=== ", chr, " ===")
 
-  orig <- fread(orig_file, sep = "\t")
-  new  <- fread(new_file,  sep = "\t")
+  # Original RefAlt uses tabs in header but spaces in data — read.table handles mixed whitespace
+  orig <- as.data.table(read.table(orig_file, header=TRUE, check.names=FALSE))
+  new  <- fread(new_file)
 
-  # Standardize column name separator (original uses spaces in data but tabs in header)
   setkey(orig, CHROM, POS)
   setkey(new,  CHROM, POS)
 
