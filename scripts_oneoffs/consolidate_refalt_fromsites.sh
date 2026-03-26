@@ -15,6 +15,7 @@
 #   sites_dir  : directory containing founder_sites.<chr>.vcf.gz
 
 module load R/4.2.2
+module load bcftools/1.21
 
 sample_dir=$1
 sites_dir=$2
