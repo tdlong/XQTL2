@@ -24,7 +24,7 @@ outfile    <- args[4]
 
 # --- Load founder site catalog as the master row set ---
 # Read VCF skipping comment lines; we only need CHROM and POS
-sites_raw <- fread(cmd = paste("bcftools query -f'%CHROM\\t%POS\\n'", sites_vcf),
+sites_raw <- fread(cmd = paste("zcat", sites_vcf, "| grep -v '^#' | cut -f1,2"),
                    col.names = c("CHROM", "POS"))
 setkey(sites_raw, CHROM, POS)
 
