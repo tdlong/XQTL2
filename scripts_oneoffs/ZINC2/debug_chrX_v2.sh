@@ -6,15 +6,15 @@
 # One command:
 #   cd /dfs7/adl/tdlong/fly_pool/XQTL2 && bash scripts_oneoffs/ZINC2/debug_chrX_v2.sh
 #
-# All diagnostic output written directly to RESDIR (git-trackable).
-# Results auto-pushed to XQTL2-dev.
+# All diagnostic output goes to scripts_oneoffs/ZINC2/debug_chrX_results/
+# (git-trackable, NOT in process/). Results auto-pushed to XQTL2-dev.
 ###############################################################################
 
 set -e
 cd /dfs7/adl/tdlong/fly_pool/XQTL2
 
 # Pull latest code from both repos
-git pull dev main 2>/dev/null || true
+git pull dev main --rebase 2>/dev/null || true
 git pull origin main 2>/dev/null || true
 
 DESIGN=helpfiles/ZINC2/Zinc2.test.F.txt
@@ -24,6 +24,7 @@ RESDIR=scripts_oneoffs/ZINC2/debug_chrX_results
 mkdir -p ${RESDIR}
 
 # ── Job 1: Instrumented smooth (chrX only) ────────────────────────────────────
+#     Writes diag to RESDIR (git-trackable), pipeline output to process/ as usual
 JID_SMOOTH=$(sbatch --parsable \
     -A tdlong_lab -p standard \
     --cpus-per-task=2 --mem-per-cpu=6G --time=4:00:00 \
@@ -47,13 +48,14 @@ Rscript scripts/hap_scan.R \
     --rfile ${DESIGN}")
 echo "hap_scan: ${JID_SCAN}"
 
-# ── Job 3: Frequency plot + push results ──────────────────────────────────────
+# ── Job 3: Frequency plot + push all results ──────────────────────────────────
 JID_DIAG=$(sbatch --parsable \
-    --dependency=afterok:${JID_SCAN} \
+    --dependency=afterany:${JID_SMOOTH},afterany:${JID_SCAN} \
     -A tdlong_lab -p standard \
     --cpus-per-task=1 --mem-per-cpu=3G --time=0:30:00 \
     --job-name=diag_dbg_chrX \
-    --wrap="module load R/4.2.2 && \
+    --wrap="cd /dfs7/adl/tdlong/fly_pool/XQTL2 && \
+module load R/4.2.2 && \
 Rscript -e '
 suppressPackageStartupMessages(library(tidyverse))
 
@@ -84,11 +86,10 @@ p <- ggplot(df, aes(x=pos_mb, y=freq, group=interaction(TRT, REP),
 ggsave(OUTPNG, p, width=10, height=10, dpi=150)
 cat(\"Written:\", OUTPNG, \"\\n\")
 ' && \
-cd /dfs7/adl/tdlong/fly_pool/XQTL2 && \
 git add ${RESDIR}/ && \
 git pull dev main --rebase && \
-git commit -m 'debug chrX v2 results' && \
-git push dev HEAD:main")
+git commit -m 'debug chrX v2: diag + freq plot' && \
+git push dev HEAD:main || echo 'WARNING: git push failed'")
 echo "diag: ${JID_DIAG}"
 
 echo ""
