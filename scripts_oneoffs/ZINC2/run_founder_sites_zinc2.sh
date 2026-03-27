@@ -68,6 +68,14 @@ while read bam; do
 done < $BAMS
 echo "  Submitted $n sample jobs"
 
+if [[ $TEST -eq 1 ]]; then
+  echo ""
+  echo "Test job submitted. When done check:"
+  echo "  cat ${LOGS}/$(basename $(head -1 $BAMS) .bam).*.out"
+  echo "  head ${FROMSITES}/RefAlt.*.chrX.txt"
+  exit 0
+fi
+
 # ── Phase 3: Consolidate per-sample files ────────────────────────────────────
 echo "Phase 3: Consolidating per-sample RefAlt files..."
 jid3=$(sbatch --dependency=afterok:$jid2_dep \
