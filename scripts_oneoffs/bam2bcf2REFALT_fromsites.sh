@@ -41,7 +41,8 @@ declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
 
 sites=${sites_dir}/founder_sites.${mychr}.vcf.gz
-sites_tab=${sites_dir}/founder_sites.${mychr}.tab
+sites_tab=$(mktemp --suffix=.tab)
+bcftools query -f'%CHROM\t%POS\t%REF,%ALT\n' $sites > $sites_tab
 
 outfile=${output}/RefAlt.${samplename}.${mychr}.txt
 
@@ -54,3 +55,5 @@ bcftools mpileup -I -d 1000 -t $mychr -T $sites -a "FORMAT/AD,FORMAT/DP" -f $ref
   | bcftools query -f'%CHROM\t%POS\t[%AD{0}\t%AD{1}]\n' \
   | grep -v '\.' \
   >> $outfile
+
+rm -f $sites_tab
