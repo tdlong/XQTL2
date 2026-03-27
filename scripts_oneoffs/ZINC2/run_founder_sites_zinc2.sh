@@ -9,18 +9,28 @@
 # Run from: /dfs7/adl/tdlong/fly_pool/XQTL2
 #   bash scripts_oneoffs/ZINC2/run_founder_sites_zinc2.sh
 ###############################################################################
+# --test : run one sample (Rep06_Z_M), one chromosome (chrX) only
+###############################################################################
 
 set -e
 
+TEST=0
+[[ "$1" == "--test" ]] && TEST=1
+
 BAMS=helpfiles/ZINC2/ZINC2.bams
 FOUNDER_SITES=process/B_founder_sites
-FROMSITES=process/ZINC2_fromsites
 ORIGINAL=process/ZINC2
 LOGS=logs/ZINC2_fromsites
 
+if [[ $TEST -eq 1 ]]; then
+  FROMSITES=process/ZINC2_fromsites_test
+else
+  FROMSITES=process/ZINC2_fromsites
+fi
+
 mkdir -p $FOUNDER_SITES $FROMSITES $LOGS
 
-echo "=== Founder-sites RefAlt validation — ZINC2 ==="
+echo "=== Founder-sites RefAlt validation — ZINC2 $([ $TEST -eq 1 ] && echo '[TEST MODE: 1 sample, chrX only]') ==="
 echo ""
 
 # ── Phase 1: Build founder site catalog (skip if already done) ───────────────
@@ -44,7 +54,9 @@ jid2_dep=""
 n=0
 while read bam; do
   sample=$(basename $bam .bam)
-  jid=$(sbatch $dep1 \
+  array_opt="--array=1-5"
+  [[ $TEST -eq 1 ]] && array_opt="--array=1"
+  jid=$(sbatch $dep1 $array_opt \
                --output=${LOGS}/${sample}.%A_%a.out \
                scripts_oneoffs/bam2bcf2REFALT_fromsites.sh \
                $bam $FOUNDER_SITES $FROMSITES \
@@ -52,6 +64,7 @@ while read bam; do
   jid2_dep="${jid2_dep:+$jid2_dep:}$jid"
   echo -e "${sample}\t$jid" >> $LOGS/jobs.log
   n=$((n+1))
+  [[ $TEST -eq 1 ]] && break
 done < $BAMS
 echo "  Submitted $n sample jobs"
 
