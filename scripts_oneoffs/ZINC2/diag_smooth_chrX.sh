@@ -18,7 +18,7 @@
 set -e
 
 jid=$(sbatch --parsable \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=6G --time=1:00:00 \
+    -A tdlong_lab -p standard --cpus-per-task=2 --mem-per-cpu=6G --time=1:00:00 \
     --job-name=diag_smooth_chrX \
     --output=logs/diag_smooth_chrX.out \
     --wrap="mkdir -p logs && module load R/4.2.2 && \
