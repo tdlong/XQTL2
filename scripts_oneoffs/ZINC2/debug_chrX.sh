@@ -15,6 +15,9 @@
 
 set -e
 
+# Pull pipeline code from XQTL2 (origin) — scripts/ lives there, not in XQTL2-dev
+git pull origin main
+
 DESIGN=helpfiles/ZINC2/Zinc2.test.F.txt
 DIR=process/ZINC2
 SCAN=ZINC2_F_v3
