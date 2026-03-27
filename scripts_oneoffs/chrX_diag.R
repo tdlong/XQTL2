@@ -10,7 +10,7 @@
 suppressPackageStartupMessages(library(tidyverse))
 
 MEANS <- "process/ZINC2/ZINC2_F_v3/ZINC2_F_v3.meansBySample.chrX.txt"
-OUTFILE <- "output/chrX_diag.txt"
+OUTFILE <- "scripts_oneoffs/chrX_diag_results.txt"
 sink(OUTFILE, split = TRUE)
 
 cat("Reading", MEANS, "\n")
@@ -83,4 +83,4 @@ print(as.data.frame(smooth_check), row.names = FALSE)
 cat("\nDone.\n")
 sink()
 cat("Results written to:", OUTFILE, "\n")
-system(sprintf("cd /dfs7/adl/tdlong/fly_pool/XQTL2 && git add %s && git commit -m 'chrX_diag results' && git push 2>&1", OUTFILE))
+system(sprintf("cd /dfs7/adl/tdlong/fly_pool/XQTL2 && git add %s && git commit -m 'chrX_diag results' && git push dev HEAD 2>&1", OUTFILE))
