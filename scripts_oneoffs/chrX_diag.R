@@ -9,6 +9,8 @@
 suppressPackageStartupMessages(library(tidyverse))
 
 MEANS <- "process/ZINC2/ZINC2_F_v3/ZINC2_F_v3.meansBySample.chrX.txt"
+OUTFILE <- "output/chrX_diag.txt"
+sink(OUTFILE, split = TRUE)   # write to file AND stdout
 
 cat("Reading", MEANS, "\n")
 df <- read.table(MEANS, header=TRUE) %>% as_tibble()
@@ -72,3 +74,7 @@ smooth_check <- df %>%
 print(as.data.frame(smooth_check), row.names = FALSE)
 
 cat("\nDone.\n")
+sink()
+cat("Results written to:", OUTFILE, "\n")
+# Commit results back so they can be read remotely
+system(sprintf("cd /dfs7/adl/tdlong/fly_pool/XQTL2 && git add %s && git commit -m 'chrX_diag results' && git push dev dev 2>&1", OUTFILE))
