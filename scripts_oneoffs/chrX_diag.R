@@ -19,10 +19,10 @@ cat(sprintf("  %d rows | %d positions | founders: %s\n",
             nrow(df), n_distinct(df$pos),
             paste(sort(unique(df$founder)), collapse=", ")))
 
-# ── Focus on base of chrX (first 3 Mb) for B2 and B4 ────────────────────────
+# ── Focus on base of chrX (pos > 20 Mb) for B2 and B4 ────────────────────────
 cat("\n=== B2 and B4 frequencies, base of chrX (pos < 3 Mb), REP=1, TRT=C ===\n")
 base_df <- df %>%
-  filter(founder %in% c("B2","B4"), pos < 3e6, REP == 1, TRT == "C") %>%
+  filter(founder %in% c("B2","B4"), pos > 20e6, REP == 1, TRT == "C") %>%
   arrange(founder, pos) %>%
   select(founder, pos, freq) %>%
   mutate(pos_kb = pos / 1000)
@@ -42,7 +42,7 @@ for (f in c("B2", "B4")) {
 # ── Same region, all founders, single rep — wide format ──────────────────────
 cat("\n=== All founders, base of chrX (pos < 3 Mb), REP=1, TRT=C ===\n")
 wide <- df %>%
-  filter(pos < 3e6, REP == 1, TRT == "C") %>%
+  filter(pos > 20e6, REP == 1, TRT == "C") %>%
   select(pos, founder, freq) %>%
   pivot_wider(names_from = founder, values_from = freq) %>%
   arrange(pos)
@@ -77,4 +77,4 @@ cat("\nDone.\n")
 sink()
 cat("Results written to:", OUTFILE, "\n")
 # Commit results back so they can be read remotely
-system(sprintf("cd /dfs7/adl/tdlong/fly_pool/XQTL2 && git add %s && git commit -m 'chrX_diag results' && git push dev dev 2>&1", OUTFILE))
+system(sprintf("cd /dfs7/adl/tdlong/fly_pool/XQTL2 && git add %s && git commit -m 'chrX_diag results' && git push 2>&1", OUTFILE))
