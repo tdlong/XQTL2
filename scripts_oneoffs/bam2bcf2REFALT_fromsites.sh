@@ -49,8 +49,7 @@ echo -e "CHROM\tPOS\tREF_${samplename}\tALT_${samplename}" > $outfile
 
 # Pileup restricted to founder sites only, then call variants in this sample
 bcftools mpileup -I -d 1000 -t $mychr -T $sites -a "FORMAT/AD,FORMAT/DP" -f $ref $bam \
-  | bcftools call -mv -Ob \
-  | bcftools view -m2 -M2 -v snps \
+  | bcftools call -C alleles -T $sites -Ob \
   | bcftools query -f'%CHROM\t%POS\t[%AD{0}\t%AD{1}]\n' \
   | grep -v '\.' \
   >> $outfile
