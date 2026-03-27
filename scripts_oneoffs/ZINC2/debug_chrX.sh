@@ -24,7 +24,7 @@ mkdir -p $RESULTS
 
 # 1. smooth_haps for chrX
 jid_smooth=$(sbatch --parsable \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
+    -A tdlong_lab -p standard --cpus-per-task=2 --mem-per-cpu=6G --time=1:00:00 \
     --job-name=smooth_chrX \
     --wrap="module load R/4.2.2 && Rscript scripts/smooth_haps.R \
         --chr chrX --dir $DIR --outdir $SCAN \
