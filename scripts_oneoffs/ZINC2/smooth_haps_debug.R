@@ -180,6 +180,15 @@ if (n_nan > 0) {
   report_freq("after NaN->NA fix", freq_summ$freq)
 }
 
+# Clamp: frequencies can't be negative (lsei solver floor is 0.0003,
+# but numerical issues occasionally produce negatives)
+n_neg_pre <- sum(freq_summ$freq < 0, na.rm = TRUE)
+if (n_neg_pre > 0) {
+  diag(sprintf("  Clamping %d negative frequencies to 0.0003", n_neg_pre))
+  freq_summ$freq <- pmax(freq_summ$freq, 0.0003, na.rm = TRUE)
+  report_freq("after clamp", freq_summ$freq)
+}
+
 # ── Dump B2/B4 at base of chrX for comparison with standalone replay ─────────
 diag("")
 diag("=== B2/B4 detail at base of chrX (21-22.5 Mb), REP=1, TRT=C ===")
