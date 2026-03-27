@@ -16,20 +16,31 @@
 ###############################################################################
 
 set -e
+mkdir -p logs
 
-jid=$(sbatch --parsable \
+# ── Job 1: lightweight gap diagnostic (reads RDS, no smoothing, ~3G) ─────────
+jid_gap=$(sbatch --parsable \
+    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=0:30:00 \
+    --job-name=diag_chrX_gap \
+    --output=logs/diag_chrX_gap.out \
+    --wrap="module load R/4.2.2 && Rscript scripts_oneoffs/ZINC2/diag_chrX_gap.R")
+echo "diag_chrX_gap:    ${jid_gap}"
+
+# ── Job 2: full smooth rerun (2x6G, captures masking + covariance log) ───────
+jid_smooth=$(sbatch --parsable \
     -A tdlong_lab -p standard --cpus-per-task=2 --mem-per-cpu=6G --time=1:00:00 \
     --job-name=diag_smooth_chrX \
     --output=logs/diag_smooth_chrX.out \
-    --wrap="mkdir -p logs && module load R/4.2.2 && \
+    --wrap="module load R/4.2.2 && \
 Rscript scripts/smooth_haps.R \
     --chr       chrX \
     --dir       process/ZINC2 \
     --outdir    ZINC2_F_v3 \
     --rfile     helpfiles/ZINC2/Zinc2.test.F.txt \
     --smooth-kb 250")
+echo "diag_smooth_chrX: ${jid_smooth}"
 
-echo "diag_smooth_chrX: ${jid}"
 echo ""
-echo "When complete, check log:"
+echo "When complete:"
+echo "  cat logs/diag_chrX_gap.out"
 echo "  cat logs/diag_smooth_chrX.out"
