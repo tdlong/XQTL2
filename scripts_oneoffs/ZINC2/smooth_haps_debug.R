@@ -28,6 +28,7 @@ while (i <= length(args)) {
     "--outdir"    = { parsed$outdir    <- args[i+1]; i <- i+2L },
     "--rfile"     = { parsed$rfile     <- args[i+1]; i <- i+2L },
     "--smooth-kb" = { parsed$smooth_kb <- as.integer(args[i+1]); i <- i+2L },
+    "--diagdir"   = { parsed$diagdir   <- args[i+1]; i <- i+2L },
     stop(paste("Unknown argument:", args[i]))
   )
 }
@@ -39,7 +40,12 @@ design.df <- read.table(parsed$rfile, header = TRUE)
 dirout        <- file.path(parsed$dir, parsed$outdir)
 fileout_rds   <- file.path(dirout, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout_means <- file.path(dirout, paste0(parsed$outdir, ".meansBySample.", mychr, ".txt"))
-fileout_diag  <- file.path(dirout, paste0(parsed$outdir, ".smooth_diag.", mychr, ".txt"))
+
+# Diagnostics go to --diagdir (trackable by git), not process/ (gitignored)
+diagdir <- if (!is.null(parsed$diagdir)) parsed$diagdir else dirout
+dir.create(diagdir, showWarnings = FALSE, recursive = TRUE)
+fileout_diag  <- file.path(diagdir, paste0(parsed$outdir, ".smooth_diag.", mychr, ".txt"))
+
 dir.create(dirout, showWarnings = FALSE, recursive = TRUE)
 
 # ── Diagnostic helper ─────────────────────────────────────────────────────────

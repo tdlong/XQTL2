@@ -6,16 +6,8 @@
 # One command:
 #   cd /dfs7/adl/tdlong/fly_pool/XQTL2 && bash scripts_oneoffs/ZINC2/debug_chrX_v2.sh
 #
-# Outputs (all in process/ZINC2/ZINC2_F_v3/):
-#   ZINC2_F_v3.smooth_diag.chrX.txt   — step-by-step diagnostic log
-#   ZINC2_F_v3.meansBySample.chrX.txt — smoothed frequencies
-#   ZINC2_F_v3.smooth.chrX.rds        — smoothed data for hap_scan
-#
-# Outputs (in scripts_oneoffs/ZINC2/debug_chrX_results/):
-#   chrX_freq.png  — founder frequency plot (all TRT x REP)
-#   wald_chrX.png  — Wald scores across chrX
-#
-# Results auto-pushed to XQTL2-dev so you can pull and see them.
+# All diagnostic output written directly to RESDIR (git-trackable).
+# Results auto-pushed to XQTL2-dev.
 ###############################################################################
 
 set -e
@@ -39,7 +31,8 @@ JID_SMOOTH=$(sbatch --parsable \
     --wrap="module load R/4.2.2 && \
 Rscript scripts_oneoffs/ZINC2/smooth_haps_debug.R \
     --chr chrX --dir ${DIR} --outdir ${SCAN} \
-    --rfile ${DESIGN} --smooth-kb 250")
+    --rfile ${DESIGN} --smooth-kb 250 \
+    --diagdir ${RESDIR}")
 echo "smooth: ${JID_SMOOTH}"
 
 # ── Job 2: Haplotype scan (depends on smooth) ────────────────────────────────
@@ -54,7 +47,7 @@ Rscript scripts/hap_scan.R \
     --rfile ${DESIGN}")
 echo "hap_scan: ${JID_SCAN}"
 
-# ── Job 3: Frequency plot + diagnostics copy + push results ───────────────────
+# ── Job 3: Frequency plot + push results ──────────────────────────────────────
 JID_DIAG=$(sbatch --parsable \
     --dependency=afterok:${JID_SCAN} \
     -A tdlong_lab -p standard \
@@ -91,10 +84,10 @@ p <- ggplot(df, aes(x=pos_mb, y=freq, group=interaction(TRT, REP),
 ggsave(OUTPNG, p, width=10, height=10, dpi=150)
 cat(\"Written:\", OUTPNG, \"\\n\")
 ' && \
-cp ${DIR}/${SCAN}/${SCAN}.smooth_diag.chrX.txt ${RESDIR}/smooth_diag.chrX.txt && \
 cd /dfs7/adl/tdlong/fly_pool/XQTL2 && \
-git add ${RESDIR}/smooth_diag.chrX.txt ${RESDIR}/chrX_freq.png && \
-git commit -m 'debug chrX v2: instrumented smooth diag + freq plot' && \
+git add ${RESDIR}/ && \
+git pull dev main --rebase && \
+git commit -m 'debug chrX v2 results' && \
 git push dev HEAD:main")
 echo "diag: ${JID_DIAG}"
 
@@ -102,4 +95,3 @@ echo ""
 echo "Jobs: smooth=${JID_SMOOTH} -> hap_scan=${JID_SCAN} -> diag=${JID_DIAG}"
 echo "Monitor: squeue -u \$USER"
 echo "Results will be in: ${RESDIR}/"
-echo "Pull after done: git pull (on XQTL2-dev)"
