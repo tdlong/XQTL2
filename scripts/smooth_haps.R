@@ -7,11 +7,11 @@
 # estimates — only their sum is constrained). Then fills gaps and smooths:
 #
 #   1. Mask: set unresolvable founder frequencies to NA (per-founder, per-window)
-#   2. Fill gaps: for each NA gap in a founder's series, fit a linear trend
-#      from ~smooth_half resolved positions on each flank, extrapolate to the
-#      gap edges, then linearly interpolate across the gap.  This avoids
-#      anchoring on the barely-resolved positions right at the gap boundary
-#      (which just barely passed the hclust distance cutoff).
+#   2. Fill gaps: for each NA gap in a founder's series, compute the mean of
+#      ~smooth_half resolved positions on each flank, then linearly interpolate
+#      across the gap between those mean anchors.  Averaging many positions
+#      avoids anchoring on the barely-resolved boundary values (which just
+#      barely passed the hclust distance cutoff).
 #   3. Smooth: apply a running mean (+/- smooth_half windows) to the filled
 #      series.
 #
@@ -64,20 +64,20 @@ running_mean <- function(x, h) {
   ifelse(cnt > 0L, tot/cnt, NA_real_)
 }
 
-# ── Gap filler (trend-based interpolation) ───────────────────────────────────
-# For each contiguous run of NAs ("gap"), fit a linear trend from up to h
-# valid positions on each flank, extrapolate to the gap edges, then linearly
-# interpolate across the gap.
+# ── Gap filler (mean-anchored interpolation) ─────────────────────────────────
+# For each contiguous run of NAs ("gap"), compute the mean of up to h valid
+# positions on each flank, then linearly interpolate across the gap between
+# those two mean anchors.
 #
 # Why not just use the values right at the gap boundary?  The haplotype
 # estimator resolves founders by cutting a distance tree (hclust + cutree).
 # Positions right at the gap edge just barely passed the cutoff — their
 # frequency estimates are only marginally better than the unresolved ones
-# inside the gap.  Fitting a trend from h flanking positions gives robust
-# anchor values driven by the well-resolved interior, not the noisy boundary.
+# inside the gap.  Averaging h flanking positions gives robust anchor values
+# driven by the well-resolved interior, not the noisy boundary.
 #
-# Leading/trailing NAs (no flank on one side) get a flat extrapolation from
-# the available flank's trend.  If no valid data exists at all, NAs remain.
+# Leading/trailing NAs (no flank on one side) get a flat fill from the
+# available flank's mean.  If no valid data exists at all, NAs remain.
 
 fill_gaps <- function(x, h) {
   n  <- length(x)
@@ -95,30 +95,18 @@ fill_gaps <- function(x, h) {
     ga <- starts[g]                          # first NA in this gap
     gb <- ends[g]                            # last  NA in this gap
 
-    # Left flank: up to h valid positions before the gap
+    # Left flank: mean of up to h valid positions before the gap
     left_idx <- which(ok & seq_along(x) < ga)
     if (length(left_idx) > 0L) {
-      left_idx <- tail(left_idx, h)
-      if (length(left_idx) >= 2L) {
-        fit_L <- lm(x[left_idx] ~ left_idx)
-        anchor_L <- predict(fit_L, newdata = data.frame(left_idx = ga))
-      } else {
-        anchor_L <- x[left_idx]              # single point — use as-is
-      }
+      anchor_L <- mean(x[tail(left_idx, h)])
     } else {
       anchor_L <- NULL
     }
 
-    # Right flank: up to h valid positions after the gap
+    # Right flank: mean of up to h valid positions after the gap
     right_idx <- which(ok & seq_along(x) > gb)
     if (length(right_idx) > 0L) {
-      right_idx <- head(right_idx, h)
-      if (length(right_idx) >= 2L) {
-        fit_R <- lm(x[right_idx] ~ right_idx)
-        anchor_R <- predict(fit_R, newdata = data.frame(right_idx = gb))
-      } else {
-        anchor_R <- x[right_idx]
-      }
+      anchor_R <- mean(x[head(right_idx, h)])
     } else {
       anchor_R <- NULL
     }
@@ -187,11 +175,10 @@ cat(sprintf("  Masked %d / %d founder-window estimates (%.1f%%) as unresolvable\
 
 # Two-step frequency recovery (order matters — fill gaps THEN smooth):
 #
-#   1. fill_gaps() — for each founder's NA gaps, fit a linear trend from ~h
-#      resolved positions on each flank, extrapolate to the gap edges, then
-#      linearly interpolate across the gap.  This uses the trend from the
-#      well-resolved interior (not just the barely-resolved boundary positions)
-#      to anchor the fill.
+#   1. fill_gaps() — for each founder's NA gaps, compute the mean of ~h
+#      resolved positions on each flank, then linearly interpolate across
+#      the gap.  Averaging h positions downweights the barely-resolved
+#      boundary values that just passed the hclust cutoff.
 #
 #   2. running_mean() — smooth the now-complete series with a +/- smooth_half
 #      window.  Because gaps are already filled, the smoother sees a continuous
