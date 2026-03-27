@@ -41,6 +41,7 @@ declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
 
 sites=${sites_dir}/founder_sites.${mychr}.vcf.gz
+sites_tab=${sites_dir}/founder_sites.${mychr}.tab
 
 outfile=${output}/RefAlt.${samplename}.${mychr}.txt
 
@@ -49,7 +50,7 @@ echo -e "CHROM\tPOS\tREF_${samplename}\tALT_${samplename}" > $outfile
 
 # Pileup restricted to founder sites only, then call variants in this sample
 bcftools mpileup -I -d 1000 -t $mychr -T $sites -a "FORMAT/AD,FORMAT/DP" -f $ref $bam \
-  | bcftools call -C alleles -T $sites -m -Ob \
+  | bcftools call -C alleles -T $sites_tab -m -Ob \
   | bcftools query -f'%CHROM\t%POS\t[%AD{0}\t%AD{1}]\n' \
   | grep -v '\.' \
   >> $outfile

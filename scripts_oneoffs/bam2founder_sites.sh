@@ -34,3 +34,6 @@ bcftools mpileup -I -d 1000 -t $mychr -a "FORMAT/AD,FORMAT/DP" -f $ref -b $bams 
   | bcftools view -m2 -M2 -v snps -i 'QUAL>59' -Oz -o ${output}/founder_sites.${mychr}.vcf.gz
 
 bcftools index -t ${output}/founder_sites.${mychr}.vcf.gz
+
+# Also create the CHROM\tPOS\tREF,ALT tab file required by bcftools call -C alleles
+bcftools query -f'%CHROM\t%POS\t%REF,%ALT\n' ${output}/founder_sites.${mychr}.vcf.gz > ${output}/founder_sites.${mychr}.tab
