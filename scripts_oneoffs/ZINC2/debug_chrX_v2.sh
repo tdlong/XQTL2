@@ -44,7 +44,7 @@ JID_SCAN=$(sbatch --parsable \
     --job-name=hscan_dbg_chrX \
     --wrap="module load R/4.2.2 && \
 Rscript scripts/hap_scan.R \
-    --chr chrX --dir ${DIR} --outdir ${SCAN} \
+    --chr chrX --dir ${DIR}/${SCAN} --outdir ${SCAN} \
     --rfile ${DESIGN}")
 echo "hap_scan: ${JID_SCAN}"
 
@@ -87,8 +87,8 @@ ggsave(OUTPNG, p, width=10, height=10, dpi=150)
 cat(\"Written:\", OUTPNG, \"\\n\")
 ' && \
 git add ${RESDIR}/ && \
-git pull dev main --rebase && \
 git commit -m 'debug chrX v2: diag + freq plot' && \
+git pull dev main --rebase && \
 git push dev HEAD:main || echo 'WARNING: git push failed'")
 echo "diag: ${JID_DIAG}"
 
