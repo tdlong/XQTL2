@@ -71,9 +71,9 @@ if (file.exists(SCANFILE)) {
     as_tibble() %>%
     mutate(pos_mb = pos / 1e6)
 
-  p3 <- ggplot(sc, aes(x = pos_mb, y = wald)) +
+  p3 <- ggplot(sc, aes(x = pos_mb, y = Wald_log10p)) +
     geom_line(linewidth = 0.3) +
-    labs(x = "Position (Mb)", y = "Wald statistic",
+    labs(x = "Position (Mb)", y = "-log10(p)",
          title = "ZINC2_F_v3: Wald scores on chrX") +
     theme_bw(base_size = 10) +
     theme(panel.grid.minor = element_blank())
