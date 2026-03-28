@@ -48,7 +48,7 @@ Rscript scripts/hap_scan.R \
     --rfile ${DESIGN}")
 echo "hap_scan: ${JID_SCAN}"
 
-# ── Job 3: Frequency plot + push all results ──────────────────────────────────
+# ── Job 3: Plots + push all results ───────────────────────────────────────────
 JID_DIAG=$(sbatch --parsable \
     --dependency=afterany:${JID_SMOOTH},afterany:${JID_SCAN} \
     -A tdlong_lab -p standard \
@@ -56,38 +56,9 @@ JID_DIAG=$(sbatch --parsable \
     --job-name=diag_dbg_chrX \
     --wrap="cd /dfs7/adl/tdlong/fly_pool/XQTL2 && \
 module load R/4.2.2 && \
-Rscript -e '
-suppressPackageStartupMessages(library(tidyverse))
-
-MEANS  <- \"${DIR}/${SCAN}/${SCAN}.meansBySample.chrX.txt\"
-OUTPNG <- \"${RESDIR}/chrX_freq.png\"
-
-df <- read.table(MEANS, header=TRUE) %>%
-  as_tibble() %>%
-  mutate(pos_mb = pos / 1e6,
-         TRT    = factor(TRT, levels=c(\"C\",\"Z\")))
-
-cat(sprintf(\"meansBySample: %d rows, %d neg, min=%.6f\\n\",
-    nrow(df), sum(df\$freq < 0, na.rm=TRUE), min(df\$freq, na.rm=TRUE)))
-
-p <- ggplot(df, aes(x=pos_mb, y=freq, group=interaction(TRT, REP),
-                    colour=TRT, alpha=TRT)) +
-  geom_line(linewidth=0.3) +
-  scale_colour_manual(values=c(C=\"grey60\", Z=\"#CC3333\"), name=\"Treatment\") +
-  scale_alpha_manual(values=c(C=0.5, Z=0.7), guide=\"none\") +
-  facet_wrap(~founder, ncol=2, scales=\"free_y\") +
-  labs(x=\"Position (Mb)\", y=\"Smoothed frequency\",
-       title=\"ZINC2_F_v3: smoothed founder frequencies on chrX\",
-       subtitle=\"All replicates; C=grey, Z=red\") +
-  theme_bw(base_size=10) +
-  theme(panel.grid.minor=element_blank(),
-        strip.text=element_text(face=\"bold\"))
-
-ggsave(OUTPNG, p, width=10, height=10, dpi=150)
-cat(\"Written:\", OUTPNG, \"\\n\")
-' && \
+Rscript scripts_oneoffs/ZINC2/debug_chrX_plots.R && \
 git add ${RESDIR}/ && \
-git commit -m 'debug chrX v2: diag + freq plot' && \
+git commit -m 'debug chrX v2: diag + plots' && \
 git pull dev main --rebase && \
 git push dev HEAD:main || echo 'WARNING: git push failed'")
 echo "diag: ${JID_DIAG}"
