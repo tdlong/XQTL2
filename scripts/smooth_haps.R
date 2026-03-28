@@ -188,6 +188,8 @@ freq_smoothed <- freq_raw %>%
   summarize(freq = mean(freq, na.rm = TRUE),
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
   arrange(CHROM, pos) %>%
+  mutate(freq = if_else(is.nan(freq), NA_real_, freq),
+         freq = pmax(freq, 0.0003, na.rm = TRUE)) %>%
   group_by(TRT, REP, founder) %>%
   mutate(freq = fill_gaps(freq, smooth_half)) %>%
   mutate(freq = running_mean(freq, smooth_half)) %>%
