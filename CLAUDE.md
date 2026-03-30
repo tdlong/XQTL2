@@ -31,7 +31,7 @@ experiments. It contains only generic pipeline code and shared reference data.
 ## What belongs here
 
 - `scripts/` — pipeline scripts
-- `helpfiles/flymap.r6.txt`, `helpfiles/founder.bams.txt`, `helpfiles/het_bounds.txt`
+- `helpfiles/flymap.r6.txt`, `helpfiles/A_founders.bams.txt`, `helpfiles/B_founders.bams.txt`, `helpfiles/het_bounds.txt`
 - `helpfiles/FREQ_SNPs_*.cM.txt.gz`
 - `helpfiles/generic_haplotype_parameters.R`
 - `README.md`, `Slurm.md`, `LICENSE`, `.gitignore`, `CLAUDE.md`

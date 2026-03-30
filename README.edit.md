@@ -27,7 +27,7 @@ a companion package for interactive graphical analysis of scan results.
 **What's already in this repo:**
 
 - All pipeline scripts (`scripts/`)
-- Founder BAM paths (`helpfiles/founder.bams.txt`) — paths relative to this repo
+- Founder BAM paths (`helpfiles/A_founders.bams.txt`) — paths relative to this repo
 - Per-founder SNP state tables for SNP frequency imputation (`helpfiles/FREQ_SNPs_Apop.cM.txt.gz`, `FREQ_SNPs_Bpop.cM.txt.gz`)
 - Physical-to-genetic map (`helpfiles/flymap.r6.txt`)
 - Heterochromatic boundary definitions (`helpfiles/het_bounds.txt`)
@@ -78,7 +78,7 @@ tar -xf founders_bam_files.tar -C data/founders/
 rm founders_bam_files.tar
 ```
 
-The file `helpfiles/founder.bams.txt` uses `pipeline/data/founders/...` paths,
+The file `helpfiles/A_founders.bams.txt` uses `pipeline/data/founders/...` paths,
 so it works directly from your project repo without any path manipulation.
 
 ### 3. Download and index the reference genome
@@ -202,23 +202,53 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 ## Step 3 — Generate REFALT counts (bam to REFALT)
 
-Create a file listing all BAM paths for your experiment — pooled samples plus
-founders. Founders are pre-aligned and live in `pipeline/data/founders/`; the
-provided `founder.bams.txt` and `B_founders.bams.txt` files already contain the
-correct paths for your project repo.
+Create `helpfiles/<project>/bam_list.txt` — one BAM path per line, sample BAMs
+first, then founders. Build a draft from your BAM directory, append founders,
+then **review it** before submitting. This file is the record of what went into
+your analysis; commit it.
 
-For experiments using the standard A- or B-population founders, use the matching
-file directly. AB8 is shared between populations. If your design crossed the
-synthetic population to a tester strain or other reference genotype, treat that
-strain as an additional "founder" and append its BAM path.
+First, check which founders are available:
 
 ```bash
-mkdir -p process/<project>
-find data/bam/<project> -name "*.bam" -size +1G > helpfiles/<project>/bam_list.txt
-cat pipeline/helpfiles/founder.bams.txt >> helpfiles/<project>/bam_list.txt
-# for B-pop: cat pipeline/helpfiles/B_founders.bams.txt >> helpfiles/<project>/bam_list.txt
+cat pipeline/helpfiles/A_founders.bams.txt
+# pipeline/data/founders/A1.dedup.bam
+# pipeline/data/founders/A2.dedup.bam
+# pipeline/data/founders/A3.dedup.bam
+# pipeline/data/founders/A4.dedup.bam
+# pipeline/data/founders/A5.dedup.bam
+# pipeline/data/founders/A6.dedup.bam
+# pipeline/data/founders/A7.dedup.bam
+# pipeline/data/founders/AB8.dedup.bam
 
-sbatch pipeline/scripts/bam2bcf2REFALT.sh \
+cat pipeline/helpfiles/B_founders.bams.txt
+# pipeline/data/founders/AB8.dedup.bam
+# pipeline/data/founders/B1.dedup.bam
+# ...
+# pipeline/data/founders/B7.dedup.bam
+```
+
+Use the founder file that matches your population. If your experiment used A-pop
+founders, use `A_founders.bams.txt` (A1–A7, AB8). If B-pop, use `B_founders.bams.txt`
+(AB8, B1–B7). Your `hap_params.R` founders list must match exactly.
+
+```bash
+# 1. Draft from your sample BAMs
+ls data/bam/<project>/*.bam > helpfiles/<project>/bam_list.txt
+
+# 2. Append the founders that match your experiment
+cat pipeline/helpfiles/A_founders.bams.txt >> helpfiles/<project>/bam_list.txt
+
+# 3. Review — confirm every sample and every founder is present, no extras
+cat helpfiles/<project>/bam_list.txt
+
+# 4. Commit
+git add helpfiles/<project>/bam_list.txt && git commit -m "add bam list for <project>"
+```
+
+```bash
+# 5. Submit
+mkdir -p process/<project>
+sbatch --array=1-5 pipeline/scripts/bam2bcf2REFALT.sh \
     helpfiles/<project>/bam_list.txt \
     process/<project>
 ```
@@ -619,7 +649,7 @@ jid_bam=$(sbatch --parsable --array=1-${NN} pipeline/scripts/fq2bam.sh \
 
 # Rebuild bam_list with old + new, rerun REFALT
 find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
-grep "A" pipeline/helpfiles/founder.bams.txt | sed 's|^|pipeline/|' \
+grep "A" pipeline/helpfiles/A_founders.bams.txt | sed 's|^|pipeline/|' \
     >> helpfiles/${PROJECT}/bam_list.txt
 
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
@@ -671,7 +701,7 @@ original results.
 XQTL2/                          ← this repo (pipeline — clone once per machine)
 ├── scripts/                    # Core pipeline scripts (tracked)
 ├── helpfiles/                  # Shared reference data (tracked)
-│   ├── founder.bams.txt        # relative paths — no editing needed
+│   ├── A_founders.bams.txt        # relative paths — no editing needed
 │   ├── B_founders.bams.txt
 │   ├── flymap.r6.txt
 │   ├── het_bounds.txt
