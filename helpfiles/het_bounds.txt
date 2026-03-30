@@ -1,0 +1,8 @@
+## dm6 euchromatin boundaries (Mb)
+## Source: Huynh et al. 2023 PLoS Genet 19:e1010439, Supplementary Table S2
+chr	eu_start	eu_end
+chrX	0.278	22.628
+chr2L	0.082	22.011
+chr2R	5.398	24.685
+chr3L	0.159	22.962
+chr3R	4.553	31.845

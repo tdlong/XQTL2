@@ -4,10 +4,18 @@
 #
 # Reads R.haps.<chr>.out.rds. Masks unresolvable founder frequencies to NA
 # (founders that cluster together at a window have arbitrary individual
-# estimates — only their sum is constrained). Then unnests to long format
-# and applies a running mean across windows within each
-# (TRT, REP, founder) / (TRT, REP, i, j) group. The NA-safe running mean
-# linearly interpolates through masked gaps from flanking valid data. Saves:
+# estimates — only their sum is constrained). Then fills gaps and smooths:
+#
+#   1. Mask: set unresolvable founder frequencies to NA (per-founder, per-window)
+#   2. Fill gaps: for each NA gap in a founder's series, compute the mean of
+#      ~smooth_half resolved positions on each flank, then linearly interpolate
+#      across the gap between those mean anchors.  Averaging many positions
+#      avoids anchoring on the barely-resolved boundary values (which just
+#      barely passed the hclust distance cutoff).
+#   3. Smooth: apply a running mean (+/- smooth_half windows) to the filled
+#      series.
+#
+# Saves:
 #   <outdir>/<scan>.smooth.<chr>.rds       -- smoothed data for steps 2 & 3
 #   <outdir>/<scan>.meansBySample.<chr>.txt -- smoothed per-founder frequencies
 #
@@ -56,6 +64,70 @@ running_mean <- function(x, h) {
   ifelse(cnt > 0L, tot/cnt, NA_real_)
 }
 
+# ── Gap filler (mean-anchored interpolation) ─────────────────────────────────
+# For each contiguous run of NAs ("gap"), compute the mean of up to h valid
+# positions on each flank, then linearly interpolate across the gap between
+# those two mean anchors.
+#
+# Why not just use the values right at the gap boundary?  The haplotype
+# estimator resolves founders by cutting a distance tree (hclust + cutree).
+# Positions right at the gap edge just barely passed the cutoff — their
+# frequency estimates are only marginally better than the unresolved ones
+# inside the gap.  Averaging h flanking positions gives robust anchor values
+# driven by the well-resolved interior, not the noisy boundary.
+#
+# Leading/trailing NAs (no flank on one side) get a flat fill from the
+# available flank's mean.  If no valid data exists at all, NAs remain.
+
+fill_gaps <- function(x, h) {
+  n  <- length(x)
+  if (n == 0L || !anyNA(x)) return(x)
+
+  ok  <- !is.na(x)
+  if (!any(ok)) return(x)                   # all NA — nothing to anchor on
+
+  # Identify contiguous NA runs (gaps)
+  rle_na  <- rle(!ok)
+  ends    <- cumsum(rle_na$lengths)
+  starts  <- ends - rle_na$lengths + 1L
+
+  for (g in which(rle_na$values)) {
+    ga <- starts[g]                          # first NA in this gap
+    gb <- ends[g]                            # last  NA in this gap
+
+    # Left flank: mean of up to h valid positions before the gap
+    left_idx <- which(ok & seq_along(x) < ga)
+    if (length(left_idx) > 0L) {
+      anchor_L <- mean(x[tail(left_idx, h)])
+    } else {
+      anchor_L <- NULL
+    }
+
+    # Right flank: mean of up to h valid positions after the gap
+    right_idx <- which(ok & seq_along(x) > gb)
+    if (length(right_idx) > 0L) {
+      anchor_R <- mean(x[head(right_idx, h)])
+    } else {
+      anchor_R <- NULL
+    }
+
+    # Fill the gap
+    gap_len <- gb - ga + 1L
+    if (!is.null(anchor_L) && !is.null(anchor_R)) {
+      # Both flanks: linear interpolation between the two trend-based anchors
+      x[ga:gb] <- seq(anchor_L, anchor_R, length.out = gap_len)
+    } else if (!is.null(anchor_L)) {
+      # Leading edge only: flat fill from left trend
+      x[ga:gb] <- anchor_L
+    } else if (!is.null(anchor_R)) {
+      # Trailing edge only: flat fill from right trend
+      x[ga:gb] <- anchor_R
+    }
+    # else: no flanks at all, leave as NA
+  }
+  x
+}
+
 # ── Load ──────────────────────────────────────────────────────────────────────
 filein <- file.path(parsed$dir, paste0("R.haps.", mychr, ".out.rds"))
 cat("Reading", filein, "\n")
@@ -86,8 +158,10 @@ freq_raw <- xx1 %>%
   mutate(Num = sexlink * Num)
 
 # Mask unresolvable founders: if >1 founder shares a group at a window,
-# those founders' frequencies are arbitrary — set to NA so the smoother
-# interpolates from flanking valid data.
+# those founders' individual frequencies are arbitrary (only their sum is
+# constrained by the least-squares fit).  Set to NA so the interpolation +
+# smoothing pipeline below recovers sensible values from flanking windows
+# where the founders ARE resolved.
 freq_raw <- freq_raw %>%
   group_by(CHROM, pos, pool, group) %>%
   mutate(group_size = n()) %>%
@@ -99,12 +173,25 @@ n_total  <- nrow(freq_raw)
 cat(sprintf("  Masked %d / %d founder-window estimates (%.1f%%) as unresolvable\n",
             n_masked, n_total, 100 * n_masked / n_total))
 
+# Two-step frequency recovery (order matters — fill gaps THEN smooth):
+#
+#   1. fill_gaps() — for each founder's NA gaps, compute the mean of ~h
+#      resolved positions on each flank, then linearly interpolate across
+#      the gap.  Averaging h positions downweights the barely-resolved
+#      boundary values that just passed the hclust cutoff.
+#
+#   2. running_mean() — smooth the now-complete series with a +/- smooth_half
+#      window.  Because gaps are already filled, the smoother sees a continuous
+#      series and produces uniform-quality output everywhere.
 freq_smoothed <- freq_raw %>%
   group_by(CHROM, pos, TRT, REP, founder) %>%
   summarize(freq = mean(freq, na.rm = TRUE),
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
   arrange(CHROM, pos) %>%
+  mutate(freq = if_else(is.nan(freq), NA_real_, freq),
+         freq = pmax(freq, 0.0003, na.rm = TRUE)) %>%
   group_by(TRT, REP, founder) %>%
+  mutate(freq = fill_gaps(freq, smooth_half)) %>%
   mutate(freq = running_mean(freq, smooth_half)) %>%
   ungroup()
 

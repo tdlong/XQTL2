@@ -256,6 +256,20 @@ simulations. At 250 kb the founder frequency estimates are stable without
 over-smoothing genuine biological signal. You can override with `--smooth 125`
 or any other value.
 
+### Unresolvable founder masking
+
+When two or more founders have nearly identical haplotypes in a region, the
+haplotype estimator cannot resolve their individual frequencies — only their sum
+is constrained. The smoothing step detects these cases using the `Groups` output
+from REFALT2haps and masks the unresolvable founders to NA before smoothing.
+The NA-safe running mean then interpolates from flanking valid data.
+
+This works well for small gaps where only some founders are ambiguous. For large
+regions where **all** founders are simultaneously unresolvable (e.g., chrX
+20.5–22.6 Mb in some datasets), the smoothing kernel cannot reach valid anchors
+and those windows will be absent from the scan output. Any QTL in such a region
+is undetectable regardless of method — there is no founder-level signal to recover.
+
 ### What run_scan.sh submits
 
 For reference, `run_scan.sh` chains these SLURM jobs automatically:

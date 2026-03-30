@@ -83,14 +83,9 @@ BASE_FONT <- fmt["font"]
 chr_order  <- c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
 chr_labels <- c(chrX = "X", chr2L = "2L", chr2R = "2R", chr3L = "3L", chr3R = "3R")
 
-HET_BOUNDS <- tribble(
-  ~chr,    ~eu_start, ~eu_end,
-  "chrX",   2.5,      21.2,
-  "chr2L",  0.5,      22.9,
-  "chr2R",  1.3,      25.1,
-  "chr3L",  0.7,      24.0,
-  "chr3R",  4.5,      32.0
-)
+# dm6 euchromatin boundaries
+# Source: Huynh et al. 2023 PLoS Genet 19:e1010439, Supplementary Table S2
+HET_BOUNDS <- read.table("helpfiles/het_bounds.txt", header = TRUE, comment.char = "#")
 
 # ── Read scans ───────────────────────────────────────────────────────────────
 scans_df <- map_dfr(seq_along(scan_files), function(j) {
@@ -181,23 +176,37 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
     filter(chr %in% chr_order)
 
   if (nrow(peaks_df) > 0) {
-    # Find the y value at each peak position for smart label placement
-    peaks_df <- peaks_df %>%
-      rowwise() %>%
-      mutate(y_val = {
-        s <- scans_df %>% filter(chr == .data$chr, label == scan_labels[1])
-        if (nrow(s) == 0) 0 else s$Wald_log10p[which.min(abs(s$pos_mb - pos_mb))]
-      }) %>%
-      ungroup()
+    # Find the max Wald across ALL scans at each peak's nearest position.
+    # Loop avoids rowwise+sapply closure issues with .data pronoun.
+    y_vals <- numeric(nrow(peaks_df))
+    for (k in seq_len(nrow(peaks_df))) {
+      pk_chr <- peaks_df$chr[k]
+      pk_pos <- peaks_df$pos_mb[k]
+      s <- scans_df %>% filter(chr == pk_chr)
+      if (nrow(s) == 0) { y_vals[k] <- 0; next }
+      best <- 0
+      for (lbl in unique(s$label)) {
+        ss <- s %>% filter(label == lbl)
+        val <- ss$Wald_log10p[which.min(abs(ss$pos_mb - pk_pos))]
+        if (val > best) best <- val
+      }
+      y_vals[k] <- best
+    }
+    peaks_df$y_val <- y_vals
 
-    # Position labels above the data with proportional offset
-    y_range <- max(scans_df$Wald_log10p, na.rm = TRUE)
+    # Per-chromosome y ranges so offsets scale to each panel's local axis
+    chr_ymax <- scans_df %>%
+      group_by(chr) %>%
+      summarise(y_range = max(Wald_log10p, na.rm = TRUE), .groups = "drop")
+
     peaks_df <- peaks_df %>%
-      mutate(y_label = y_val + y_range * 0.08)
+      left_join(chr_ymax, by = "chr") %>%
+      mutate(y_triangle = y_val + y_range * 0.04,
+             y_label    = y_val + y_range * 0.12)
 
     p <- p +
       geom_point(data = peaks_df,
-                 aes(x = pos_mb, y = y_val),
+                 aes(x = pos_mb, y = y_triangle),
                  shape = 25, size = 2, fill = NA,
                  colour = "black", stroke = 0.8, inherit.aes = FALSE) +
       geom_text(data = peaks_df,
