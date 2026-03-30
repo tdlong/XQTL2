@@ -64,7 +64,7 @@ DEP=""
 # ── SNP scan ─────────────────────────────────────────────────────────────────
 jid_snp=$(sbatch --parsable ${DEP} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
-    --array=1-5 scripts/snp_scan.sh \
+    --array=1-5 "$(dirname $(readlink -f $0))/snp_scan.sh" \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
@@ -75,7 +75,7 @@ echo "snp_scan:   $jid_snp"
 # ── concat SNP scan chromosomes ──────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_snp} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} --time=1:00:00 \
-    --wrap="bash scripts/concat_scans.sh --snp ${OUTDIR}")
+    --wrap="bash $(readlink -f $(dirname $0))/concat_scans.sh --snp ${OUTDIR}")
 echo "snp_concat: $jid_concat"
 
 echo "done:       ${jid_concat}"

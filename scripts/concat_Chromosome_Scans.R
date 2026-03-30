@@ -4,7 +4,8 @@ library(ggplot2)
 library(RColorBrewer)
 library(slider)
 
-source("scripts/XQTL_plotting_functions.R")
+script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
+source(file.path(script_dir, "XQTL_plotting_functions.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 data_path = as.character(args[1])

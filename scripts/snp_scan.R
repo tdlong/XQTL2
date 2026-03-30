@@ -45,10 +45,11 @@ while (i <= length(args)) {
   )
 }
 
+script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
 mychr    <- parsed$chr
 founders <- parsed$founders
 design.df <- read.table(parsed$rfile, header = TRUE)
-source("scripts/scan_functions.R")
+source(file.path(script_dir, "scan_functions.R"))
 
 filein        <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout       <- file.path(parsed$dir, paste0(parsed$outdir, ".snp_scan.", mychr, ".txt"))

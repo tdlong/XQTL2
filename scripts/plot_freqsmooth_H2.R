@@ -50,7 +50,8 @@ if (!exists("THRESHOLD")) THRESHOLD <- NULL
 if (!exists("HET_BOUNDS")) {
   # dm6 euchromatin boundaries
   # Source: Huynh et al. 2023 PLoS Genet 19:e1010439, Supplementary Table S2
-  HET_BOUNDS <- read.table("helpfiles/het_bounds.txt", header = TRUE, comment.char = "#")
+  script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
+  HET_BOUNDS <- read.table(file.path(script_dir, "../helpfiles/het_bounds.txt"), header = TRUE, comment.char = "#")
 }
 
 # ── Read scans ─────────────────────────────────────────────────────────────────

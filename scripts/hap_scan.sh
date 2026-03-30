@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-Rscript scripts/hap_scan.R \
+Rscript "$(dirname $(readlink -f $0))/hap_scan.R" \
     --chr     "${mychr}"  \
     --dir     "${DIR}/${OUTDIR}" \
     --outdir  "${OUTDIR}" \

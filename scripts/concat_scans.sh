@@ -24,7 +24,7 @@ mydir=$1
 name=$(basename "$mydir")
 
 if [[ "$MODE" == "hap" ]]; then
-    Rscript scripts/concat_Chromosome_Scans.R "$mydir"
+    Rscript "$(dirname $(readlink -f $0))/concat_Chromosome_Scans.R" "$mydir"
     tar -czvf "$mydir/${name}.tar.gz" -C "$mydir" \
         "${name}.scan.txt" \
         "${name}.meansBySample.txt" \

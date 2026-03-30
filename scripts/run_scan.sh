@@ -60,7 +60,7 @@ DEP_SMOOTH=""
 # ── smooth haplotype frequencies ─────────────────────────────────────────────
 jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
-    --array=1-5 scripts/smooth_haps.sh \
+    --array=1-5 "$(dirname $(readlink -f $0))/smooth_haps.sh" \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
@@ -70,7 +70,7 @@ echo "smooth:   $jid_smooth"
 # ── haplotype scan (Wald + H2) ───────────────────────────────────────────────
 jid_hap=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
-    --array=1-5 scripts/hap_scan.sh \
+    --array=1-5 "$(dirname $(readlink -f $0))/hap_scan.sh" \
     --rfile  "${DESIGN}" \
     --dir    "${DIR}" \
     --outdir "${SCAN}")
@@ -79,7 +79,7 @@ echo "hap_scan: $jid_hap"
 # ── concat chromosomes ───────────────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_hap} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} --time=1:00:00 \
-    --wrap="bash scripts/concat_scans.sh ${OUTDIR}")
+    --wrap="bash $(readlink -f $(dirname $0))/concat_scans.sh ${OUTDIR}")
 echo "concat:   $jid_concat"
 
 echo "done:     ${jid_concat}"

@@ -75,7 +75,8 @@ chr_labels <- c(chrX = "X", chr2L = "2L", chr2R = "2R", chr3L = "3L", chr3R = "3
 
 # dm6 euchromatin boundaries
 # Source: Huynh et al. 2023 PLoS Genet 19:e1010439, Supplementary Table S2
-HET_BOUNDS <- read.table("helpfiles/het_bounds.txt", header = TRUE, comment.char = "#")
+script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
+HET_BOUNDS <- read.table(file.path(script_dir, "../helpfiles/het_bounds.txt"), header = TRUE, comment.char = "#")
 
 # ── Read data ────────────────────────────────────────────────────────────────
 if (!file.exists(scan_file)) stop("File not found: ", scan_file)

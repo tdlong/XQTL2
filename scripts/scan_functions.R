@@ -130,7 +130,7 @@ pseudoN.test = function(p1,p2,covar1,covar2,nrepl,N1,N2){
         
 add_genetic = function(df){
 	df$cM = rep(NA,nrow(df))
-	fm=read.table("helpfiles/flymap.r6.txt",header=FALSE)
+	fm=read.table(file.path(script_dir, "../helpfiles/flymap.r6.txt"),header=FALSE)
 	colnames(fm)=c("chr","pos","cM")
 	library(splines)
 	for(chrs in c("chrX","chr2L","chr2R","chr3L","chr3R")){

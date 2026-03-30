@@ -12,5 +12,6 @@ source(myparfile)
 filein=paste0(mydir,"/RefAlt.",mychr,".txt")
 rdsfile=paste0(mydir,"/R.haps.",mychr,".rds")
 fileout=paste0(mydir,"/R.haps.",mychr,".out.rds")
-source("scripts/REFALT2haps.code.R")
+script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
+source(file.path(script_dir, "REFALT2haps.code.R"))
 

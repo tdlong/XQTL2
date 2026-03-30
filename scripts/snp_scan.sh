@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-Rscript scripts/snp_scan.R \
+Rscript "$(dirname $(readlink -f $0))/snp_scan.R" \
     --chr        "${mychr}"     \
     --dir        "${DIR}/${OUTDIR}" \
     --outdir     "${OUTDIR}"    \

@@ -24,4 +24,4 @@ done
 declare -a chrs=("chrX" "chr2L" "chr2R" "chr3L" "chr3R")
 mychr=${chrs[$SLURM_ARRAY_TASK_ID - 1]}
 
-Rscript scripts/haps2scan.Apr2025.R $mychr $Rfile $mydir $myoutdir
+Rscript "$(dirname $(readlink -f $0))/haps2scan.Apr2025.R" $mychr $Rfile $mydir $myoutdir
