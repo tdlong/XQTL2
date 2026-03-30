@@ -78,8 +78,7 @@ tar -xf founders_bam_files.tar -C data/founders/
 rm founders_bam_files.tar
 ```
 
-The file `helpfiles/A_founders.bams.txt` uses `pipeline/data/founders/...` paths,
-so it works directly from your project repo without any path manipulation.
+The founder BAM paths are pre-configured in `helpfiles/A_founders.bams.txt` and `helpfiles/B_founders.bams.txt` — no editing needed.
 
 ### 3. Download and index the reference genome
 
@@ -98,7 +97,7 @@ samtools dict ref/dm6.fa > ref/dm6.dict
 ```
 
 Submit as a SLURM job — BWA indexing takes ~1 hour. The pipeline is not limited
-to Drosophila; it can be adapted to any organism with pooled-sequencing XQTL data
+to Drosophila; it can be adapted to any synthetic population with pooled-sequencing XQTL data
 by substituting the appropriate reference genome, genetic map, and founder BAMs.
 
 ### 4. Create your project repo
@@ -230,6 +229,10 @@ cat pipeline/helpfiles/B_founders.bams.txt
 Use the founder file that matches your population. If your experiment used A-pop
 founders, use `A_founders.bams.txt` (A1–A7, AB8). If B-pop, use `B_founders.bams.txt`
 (AB8, B1–B7). Your `hap_params.R` founders list must match exactly.
+
+If your design crossed the synthetic population to a tester strain or other
+reference genotype, treat that strain as an additional founder and include its
+BAM in the list alongside the population founders.
 
 ```bash
 # 1. Draft from your sample BAMs
@@ -614,7 +617,7 @@ bash scripts_oneoffs/malathion/malathion_pipeline.sh
 
 The script chains Steps 3–6 with SLURM dependencies and prints each job ID.
 When complete, download the results tarball and check for a signal on chr3R
-around 9 Mb (the *Ace* locus — a known malathion resistance gene).
+around 9 Mb. For biological interpretation see [Long et al. 2022](https://pubmed.ncbi.nlm.nih.gov/36250804/).
 
 ---
 
@@ -648,9 +651,8 @@ jid_bam=$(sbatch --parsable --array=1-${NN} pipeline/scripts/fq2bam.sh \
     ${NEW_BARCODES} data/raw/${PROJECT}_batch2 data/bam/${PROJECT})
 
 # Rebuild bam_list with old + new, rerun REFALT
-find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
-grep "A" pipeline/helpfiles/A_founders.bams.txt | sed 's|^|pipeline/|' \
-    >> helpfiles/${PROJECT}/bam_list.txt
+# Update helpfiles/${PROJECT}/bam_list.txt to include all sample BAMs (old + new)
+# then review and commit before submitting
 
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
     pipeline/scripts/bam2bcf2REFALT.sh \
