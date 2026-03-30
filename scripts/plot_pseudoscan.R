@@ -176,16 +176,20 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
     filter(chr %in% chr_order)
 
   if (nrow(peaks_df) > 0) {
-    # Find the max y value across ALL scans at each peak position
+    # Find the max Wald across ALL scans at each peak's position.
+    # Use the nearest scan position (not exact match).
     peaks_df <- peaks_df %>%
       rowwise() %>%
       mutate(y_val = {
         s <- scans_df %>% filter(chr == .data$chr)
-        if (nrow(s) == 0) 0 else max(
-          sapply(scan_labels, function(lbl) {
+        if (nrow(s) == 0) 0 else {
+          vals <- sapply(unique(s$label), function(lbl) {
             ss <- s %>% filter(label == lbl)
-            if (nrow(ss) == 0) 0 else ss$Wald_log10p[which.min(abs(ss$pos_mb - pos_mb))]
-          }), na.rm = TRUE)
+            if (nrow(ss) == 0) return(0)
+            ss$Wald_log10p[which.min(abs(ss$pos_mb - .data$pos_mb))]
+          })
+          max(vals, na.rm = TRUE)
+        }
       }) %>%
       ungroup()
 
@@ -196,8 +200,8 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
 
     peaks_df <- peaks_df %>%
       left_join(chr_ymax, by = "chr") %>%
-      mutate(y_triangle = y_val + y_range * 0.03,
-             y_label    = y_val + y_range * 0.11)
+      mutate(y_triangle = y_val + y_range * 0.04,
+             y_label    = y_val + y_range * 0.12)
 
     p <- p +
       geom_point(data = peaks_df,
