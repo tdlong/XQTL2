@@ -3,8 +3,14 @@
 ## Overview
 
 This pipeline takes pooled-sequencing XQTL data from raw reads to genome scans
-and publication figures. Everything runs on a SLURM cluster from the project
-root directory. You submit one script and walk away.
+and publication figures. Everything runs on a SLURM cluster. You can submit the
+entire pipeline with a single script and walk away, or run each step individually
+for greater control.
+
+Once you have haplotype calls you can run additional scans with different designs
+and generate new figures without repeating the expensive alignment and haplotype
+steps. We are also developing [XQTL.xplore](https://github.com/tdlong/XQTL.xplore),
+a companion package for interactive graphical analysis of scan results.
 
 **Pipeline at a glance:**
 
@@ -15,22 +21,23 @@ root directory. You submit one script and walk away.
 5. Scan
    - 5a. Haplotype scan (`run_scan.sh` — smooth, Wald test, H², concat)
    - 5b. SNP scan (`run_snp_scan.sh` — optional, imputed SNP-level test)
-6. Generate figures (Rscript commands, submitted via sbatch)
+6. Generate figures (`plot_pseudoscan.R`, `plot_H2_overlay.R`, `plot_freqsmooth_snp.R`)
 7. Download results
 
 **What's already in this repo:**
 
 - All pipeline scripts (`scripts/`)
-- Founder bam paths (`helpfiles/founder.bams.txt`) — pre-aligned, shared on cluster
-- SNP frequency tables (`helpfiles/FREQ_SNPs_Apop.cM.txt.gz`, `FREQ_SNPs_Bpop.cM.txt.gz`)
-- Genetic map (`helpfiles/flymap.r6.txt`)
-- A complete worked example (`helpfiles/malathion_test/`)
+- Founder BAM paths (`helpfiles/A_founders.bams.txt`) — paths relative to this repo
+- Per-founder SNP state tables for SNP frequency imputation (`helpfiles/FREQ_SNPs_Apop.cM.txt.gz`, `FREQ_SNPs_Bpop.cM.txt.gz`)
+- Physical-to-genetic map (`helpfiles/flymap.r6.txt`)
+- Heterochromatic boundary definitions (`helpfiles/het_bounds.txt`)
+- Generic haplotype parameter template (`helpfiles/generic_haplotype_parameters.R`)
 
 **What you need to provide per experiment:**
 
 - Raw sequencing reads (from the sequencing core)
 - A barcode file mapping barcodes → sample names (Step 2)
-- A haplotype parameters file listing your founders and samples (Step 4)
+- A haplotype parameters file listing your founders, samples, and window sizes (Step 4)
 - A design file describing your experimental layout (Step 5)
 
 **What you get at the end:**
@@ -41,10 +48,79 @@ root directory. You submit one script and walk away.
 - Manhattan plots and heritability figures (PNG)
 - Tarballs of everything, ready to scp down
 
-**Note:** SLURM headers use `-A tdlong_lab -p standard`. If you're in a
-different lab, change the account/partition in the SBATCH scripts.
+The [mylab-XQTL template](https://github.com/tdlong/mylab-XQTL) contains a
+fully configured malathion resistance experiment used as a training example — see
+the **Worked example** section at the end of this README.
 
-A legacy scan without smoothing (`haps2scan.Apr2025.sh`) is also available.
+---
+
+## Installation and Setup
+
+This is a one-time setup per machine. You need two things: the pipeline (this
+repo) and a project repo for your own data and scripts.
+
+### 1. Clone the pipeline
+
+```bash
+git clone https://github.com/tdlong/XQTL2.git
+cd XQTL2
+```
+
+### 2. Download founder BAMs
+
+Pre-aligned founder BAMs are hosted on the Long lab server. Download and unpack
+into `data/founders/`:
+
+```bash
+mkdir -p data/founders
+wget https://wfitch.bio.uci.edu/~tdlong/founders_bam_files.tar
+tar -xf founders_bam_files.tar -C data/founders/
+rm founders_bam_files.tar
+```
+
+The founder BAM paths are pre-configured in `helpfiles/A_founders.bams.txt` and `helpfiles/B_founders.bams.txt` — no editing needed.
+
+### 3. Download and index the reference genome
+
+The pipeline aligns to dm6 (*Drosophila melanogaster* release 6). We use
+UCSC-style chromosome names (`chr2L`, `chr3R`, etc.) rather than FlyBase names.
+Download from UCSC:
+
+```bash
+mkdir -p ref
+wget https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
+gunzip dm6.fa.gz
+mv dm6.fa ref/
+bwa index ref/dm6.fa
+samtools faidx ref/dm6.fa
+samtools dict ref/dm6.fa > ref/dm6.dict
+```
+
+Submit as a SLURM job — BWA indexing takes ~1 hour. The pipeline is not limited
+to Drosophila; it can be adapted to any synthetic population with pooled-sequencing XQTL data
+by substituting the appropriate reference genome, genetic map, and founder BAMs.
+
+### 4. Create your project repo
+
+Your experimental data and project-specific scripts live in a separate repo
+alongside XQTL2. Clone the [mylab-XQTL template](https://github.com/tdlong/mylab-XQTL)
+and rename it to whatever suits your lab:
+
+```bash
+cd ..   # move up next to XQTL2/
+git clone https://github.com/tdlong/mylab-XQTL.git LongLab-XQTL
+cd LongLab-XQTL
+ln -s ../XQTL2 pipeline   # all pipeline calls go through this symlink
+```
+
+Replace `LongLab-XQTL` with any name — `SmithLab-XQTL`, `MyProject`, whatever
+makes sense for your group. The `pipeline` symlink is the only path that matters.
+
+All your submission scripts call `pipeline/scripts/run_scan.sh` etc. When
+XQTL2 is updated, run `git pull` inside the `/path/to/XQTL2` directory — your
+scripts automatically use the new version via the symlink.
+
+---
 
 ### SLURM resource requirements
 
@@ -52,16 +128,16 @@ The cluster's standard partition provides max 6 GB per core; highmem provides
 10 GB per core. Always use `--mem-per-cpu` (not `--mem`). See `Slurm.md` for
 full partition details.
 
-Every script explicitly requests memory. Scan steps were profiled with `seff`
-on the malathion test dataset (2 replicates, 4 samples). Larger experiments
-will scale proportionally. Baseline request is 1 CPU × 3G — there is little
-gain in requesting less. For Steps 5–6, `run_scan.sh` and `run_snp_scan.sh`
-accept `--mem-per-cpu`, `--cpus-per-task`, `-p`, and `-A` to override
-resources and partition for all jobs they submit.
+Default SLURM account and partition are `tdlong_lab` and `standard`. Pass
+`-A <account>` and `-p <partition>` to any pipeline script to override — all
+scripts accept these flags.
 
-| Script | Step | Partition | CPUs | Mem/CPU | Time | Profiled (malathion test) |
-|--------|------|-----------|------|---------|------|--------------------------|
-| `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | `bwa -t 4` uses 4 threads; `java -Xmx20g` needs ~20G |
+Scan steps were profiled with `seff` on the malathion training dataset (2
+effective replicates, 4 samples). Larger experiments scale proportionally.
+
+| Script | Step | Partition | CPUs | Mem/CPU | Time | Profiled (malathion) |
+|--------|------|-----------|------|---------|------|----------------------|
+| `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | `bwa -t 4`; `java -Xmx20g` needs ~20G total |
 | `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 5 days | bcftools mpileup, I/O-bound |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | large haplotype matrices require highmem |
 | `smooth_haps.sh` | 5a | standard | 1 | 3G | 4 hr | 909 MB / 17s wall |
@@ -88,16 +164,11 @@ Add a SLURM header to `get_data.sh` and submit. Store raw reads under `data/raw/
 
 ## Step 2 — Align reads (fq to bam)
 
-### Reference genome
-
-Reference genome files go in `ref/` (too large for git). The pipeline expects `ref/dm6.fa`
-with standard BWA and samtools indices. Copy from a shared location or index your own.
-
 ### Barcode-to-sample mapping file
 
-Create a tab-delimited file mapping sequencing barcodes to sample names. Each row is one
-sample with three fields: forward barcode, reverse barcode, sample name. Sample names
-become the bam file prefixes and readgroup IDs used throughout the pipeline.
+Create a tab-delimited file mapping sequencing barcodes to sample names. Each row
+is one sample: forward barcode, reverse barcode, sample name. Sample names become
+the BAM file prefixes and read group IDs used throughout the pipeline.
 
 ```
 TGGCTATG    TTGTCAGC    R3con
@@ -113,11 +184,16 @@ Save this file to `helpfiles/<project>/<project>.barcodes.txt`.
 ```bash
 mkdir -p data/bam/<project>
 NN=$(wc -l < helpfiles/<project>/<project>.barcodes.txt)
-sbatch --array=1-$NN scripts/fq2bam.sh \
+sbatch --array=1-$NN pipeline/scripts/fq2bam.sh \
     helpfiles/<project>/<project>.barcodes.txt \
     data/raw/<project> \
     data/bam/<project>
 ```
+
+`fq2bam.sh` handles barcode splitting, BWA alignment, coordinate sorting, and
+Picard AddOrReplaceReadGroups in one job per sample. **Sample names in the output
+BAMs are set by Picard read groups and must exactly match what downstream scripts
+expect.** Verify with `samtools view -H <sample>.bam | grep "^@RG"`.
 
 Bam files below ~1 GB likely indicate a failed library prep and should be reprocessed.
 
@@ -125,20 +201,63 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 ## Step 3 — Generate REFALT counts (bam to REFALT)
 
-Create a file listing all bam paths for your experiment (pooled samples + founders).
-Founders are pre-aligned; paths to the shared founder bams are in `helpfiles/founder.bams.txt`.
-Only include founders for your population — grep `"A"` for A-pop or `"B"` for B-pop
-(AB8 is shared and matched by both).
+Create `helpfiles/<project>/bam_list.txt` — one BAM path per line, sample BAMs
+first, then founders. Build a draft from your BAM directory, append founders,
+then **review it** before submitting. This file is the record of what went into
+your analysis; commit it.
+
+First, check which founders are available:
 
 ```bash
-mkdir -p process/<project>
-find data/bam/<project> -name "*.bam" -size +1G > helpfiles/<project>/bam_list.txt
-grep "A" helpfiles/founder.bams.txt >> helpfiles/<project>/bam_list.txt   # or "B" for B-pop
+cat pipeline/helpfiles/A_founders.bams.txt
+# pipeline/data/founders/A1.dedup.bam
+# pipeline/data/founders/A2.dedup.bam
+# pipeline/data/founders/A3.dedup.bam
+# pipeline/data/founders/A4.dedup.bam
+# pipeline/data/founders/A5.dedup.bam
+# pipeline/data/founders/A6.dedup.bam
+# pipeline/data/founders/A7.dedup.bam
+# pipeline/data/founders/AB8.dedup.bam
 
-sbatch scripts/bam2bcf2REFALT.sh \
+cat pipeline/helpfiles/B_founders.bams.txt
+# pipeline/data/founders/AB8.dedup.bam
+# pipeline/data/founders/B1.dedup.bam
+# ...
+# pipeline/data/founders/B7.dedup.bam
+```
+
+Use the founder file that matches your population. If your experiment used A-pop
+founders, use `A_founders.bams.txt` (A1–A7, AB8). If B-pop, use `B_founders.bams.txt`
+(AB8, B1–B7). Your `hap_params.R` founders list must match exactly.
+
+If your design crossed the synthetic population to a tester strain or other
+reference genotype, treat that strain as an additional founder and include its
+BAM in the list alongside the population founders.
+
+```bash
+# 1. Draft from your sample BAMs
+ls data/bam/<project>/*.bam > helpfiles/<project>/bam_list.txt
+
+# 2. Append the founders that match your experiment
+cat pipeline/helpfiles/A_founders.bams.txt >> helpfiles/<project>/bam_list.txt
+
+# 3. Review — confirm every sample and every founder is present, no extras
+cat helpfiles/<project>/bam_list.txt
+
+# 4. Commit
+git add helpfiles/<project>/bam_list.txt && git commit -m "add bam list for <project>"
+```
+
+```bash
+# 5. Submit
+mkdir -p process/<project>
+sbatch --array=1-5 pipeline/scripts/bam2bcf2REFALT.sh \
     helpfiles/<project>/bam_list.txt \
     process/<project>
 ```
+
+This runs as a 5-task array (one chromosome each: chrX, chr2L, chr2R, chr3L,
+chr3R) and produces `RefAlt.<chr>.txt` files in `process/<project>/`.
 
 ---
 
@@ -146,30 +265,32 @@ sbatch scripts/bam2bcf2REFALT.sh \
 
 ### Haplotype parameters file
 
-Create `helpfiles/<project>/hap_params.R`:
+Create `helpfiles/<project>/hap_params.R`. Founder names must exactly match the
+read group sample names in the founder BAMs (set by Picard during alignment):
 
 ```r
-# Founder set for this population
-founders <- c("B1","B2","B3","B4","B5","B6","B7","AB8")
+# Founder set — names must match read groups in the founder BAMs
+founders <- c("A1","A2","A3","A4","A5","A6","A7","AB8")
 
-# Sample names — must exactly match bam prefixes from Step 2
+# Sample names — must exactly match BAM prefixes from Step 2
 names_in_bam <- c("R1con","R1age","R2con","R2age","R3con","R3age",
                    "R4con","R4age","R5con","R5age","R6con","R6age")
 
 # Window step size in bp (5000 typical; 10000 for very large experiments)
 step <- 5000
 
-# Base half-window in bp for haplotype inference.
-# The caller adapts this: in low-recombination regions the window grows
-# proportional to max_RR / local_RR, so each window captures similar
-# recombination events regardless of position.
+# Base half-window in bp. In low-recombination regions the window expands
+# proportional to max_RR / local_RR so each window spans similar
+# recombination distances regardless of genomic position.
 size <- 50000
 
 # Tree height cutoff for founder distinguishability (2.5 is default)
 h_cutoff <- 2.5
 ```
 
-To generate `names_in_bam` from your bam directory:
+See `pipeline/helpfiles/generic_haplotype_parameters.R` for a full template with
+comments. To generate `names_in_bam` from your BAM directory:
+
 ```bash
 echo -n "names_in_bam <- c(" && \
 find data/bam/<project> -name "*.bam" -size +1G -print0 | \
@@ -179,34 +300,41 @@ sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//' && echo ")"
 
 ### Run haplotype calling
 
+This runs as a 5-task array, one chromosome per task:
+
 ```bash
-sbatch --array=1-5 scripts/REFALT2haps.sh \
+sbatch --array=1-5 pipeline/scripts/REFALT2haps.sh \
     --parfile helpfiles/<project>/hap_params.R \
     --dir     process/<project>
 ```
 
 ---
 
-## Step 5a — Haplotype scan
+## Step 5 — Scan
 
-`run_scan.sh` handles everything: smoothing haplotype frequencies, running the
-Wald test and heritability estimates, and concatenating chromosomes. One command
-per scan.
+The scan takes the haplotype output and runs the Wald test, heritability
+estimates, and chromosome concatenation. There are two ways to run it:
+
+- **`run_scan.sh` (recommended):** submits smoothing → scan → concat as a
+  chained SLURM pipeline with one command.
+- **Step by step:** submit each stage individually — useful if you want to
+  adjust parameters between stages or diagnose failures.
 
 ### Design file
 
-Create a plain text table with one row per sample. Required columns:
+Create a plain text table with one row per sample. **Column names are
+case-sensitive** — the pipeline refers to them by exact name.
 
 | Column | Description |
 |--------|-------------|
-| `bam` | Sample name (must match bam prefix from Step 2) |
+| `bam` | Sample name (must match BAM prefix from Step 2) |
 | `TRT` | `C` = control, `Z` = selected |
 | `REP` | Replicate number (integer) |
 | `REPrep` | Technical replicate within replicate (usually `1`) |
 | `Num` | Number of flies in pool |
 | `Proportion` | Fraction selected (`NA` for controls) |
 
-Create and save from R:
+Create and save from R (use `write.table` defaults — row numbers are included):
 
 ```r
 design <- data.frame(
@@ -220,20 +348,18 @@ design <- data.frame(
 write.table(design, "helpfiles/<project>/design.txt")
 ```
 
-### Run the scan
+### Option A — One-command scan (recommended)
+
+`run_scan.sh` chains smoothing → Wald test + H² → chromosome concat with proper
+SLURM dependency chaining. One command per scan:
 
 ```bash
-bash scripts/run_scan.sh \
+bash pipeline/scripts/run_scan.sh \
     --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
     --scan      <scan_name> \
     --after     $JID_HAPS
 ```
-
-That's it. This submits all SLURM jobs (smooth, hap scan, concat) with proper
-dependency chaining.
-
-### Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -241,124 +367,104 @@ dependency chaining.
 | `--dir` | (required) | Project directory (e.g. `process/<project>`) |
 | `--scan` | (required) | Scan name — becomes output subdirectory |
 | `--smooth` | 250 | Smoothing half-window in kb |
-| `--mem-per-cpu` | 3G | Memory per CPU for all jobs (SLURM `--mem-per-cpu`) |
-| `--cpus-per-task` | 1 | CPUs for all jobs (SLURM `--cpus-per-task`) |
-| `-p` / `--partition` | standard | SLURM partition (e.g. `highmem`) |
-| `-A` / `--account` | tdlong_lab | SLURM account to charge |
-| `--after` | (none) | SLURM job ID to wait on before starting |
+| `--mem-per-cpu` | 3G | Memory per CPU for all jobs |
+| `--cpus-per-task` | 1 | CPUs for all jobs |
+| `-p` / `--partition` | standard | SLURM partition |
+| `-A` / `--account` | tdlong_lab | SLURM account |
+| `--after` | (none) | SLURM job ID to wait on (e.g. from REFALT2haps) |
 
-### Smoothing window
+### Option B — Step by step
 
-The default smoothing window is 250 kb. This was chosen by comparing 125 kb and
-250 kb on real data (malathion experiment): plotting smoothed founder haplotype
-frequencies versus genomic position and comparing against expectations from
-simulations. At 250 kb the founder frequency estimates are stable without
-over-smoothing genuine biological signal. You can override with `--smooth 125`
-or any other value.
+For reference or debugging, `run_scan.sh` internally chains these three jobs:
 
-### Unresolvable founder masking
-
-When two or more founders have nearly identical haplotypes in a region, the
-haplotype estimator cannot resolve their individual frequencies — only their sum
-is constrained. The smoothing step detects these cases using the `Groups` output
-from REFALT2haps and masks the unresolvable founders to NA before smoothing.
-The NA-safe running mean then interpolates from flanking valid data.
-
-This works well for small gaps where only some founders are ambiguous. For large
-regions where **all** founders are simultaneously unresolvable (e.g., chrX
-20.5–22.6 Mb in some datasets), the smoothing kernel cannot reach valid anchors
-and those windows will be absent from the scan output. Any QTL in such a region
-is undetectable regardless of method — there is no founder-level signal to recover.
-
-### What run_scan.sh submits
-
-For reference, `run_scan.sh` chains these SLURM jobs automatically:
-
-1. `smooth_haps.sh` — smooth haplotype frequencies and covariances (5 array tasks)
-2. `hap_scan.sh` — Wald test + heritability at each haplotype window (5 array tasks, after #1)
-3. `concat_scans.sh` — merge per-chromosome files and generate Manhattan plots (after #2)
-
-### Legacy scan (alternative — no smoothing)
+**1. Smooth haplotype frequencies** (5-task array, one chromosome per task):
 
 ```bash
-sbatch --array=1-5 scripts/haps2scan.Apr2025.sh \
+sbatch --array=1-5 pipeline/scripts/smooth_haps.sh \
+    --rfile     helpfiles/<project>/design.txt \
+    --dir       process/<project> \
+    --outdir    <scan_name> \
+    --smooth-kb 250
+```
+
+**2. Haplotype scan** — Wald test + heritability at each window (5-task array,
+after smooth step):
+
+```bash
+sbatch --array=1-5 pipeline/scripts/hap_scan.sh \
     --rfile  helpfiles/<project>/design.txt \
     --dir    process/<project> \
     --outdir <scan_name>
 ```
 
-Followed by `bash scripts/concat_scans.sh process/<project>/<scan_name>` to
-concatenate chromosomes.
+**3. Concatenate chromosomes and generate quick-look plots:**
+
+```bash
+bash pipeline/scripts/concat_scans.sh process/<project>/<scan_name>
+```
+
+### Smoothing window
+
+The default smoothing window is 250 kb, chosen by comparing 125 kb and 250 kb
+on real data (malathion experiment). At 250 kb the founder frequency estimates
+are stable without over-smoothing genuine biological signal. Override with
+`--smooth 125` or any value.
+
+### Legacy scan (no smoothing)
+
+An older scan method without haplotype smoothing is preserved for reference:
+
+```bash
+sbatch --array=1-5 pipeline/scripts/haps2scan.Apr2025.sh \
+    --rfile  helpfiles/<project>/design.txt \
+    --dir    process/<project> \
+    --outdir <scan_name>
+bash pipeline/scripts/concat_scans.sh process/<project>/<scan_name>
+```
 
 ---
 
 ## Step 5b — SNP scan (optional)
 
 The SNP scan imputes per-SNP ALT allele frequencies from the smoothed haplotype
-estimates produced in Step 5a, then runs a Wald test (df=1) at every SNP.
-This tests at individual SNP positions rather than haplotype windows, but
-the signal comes from the same smoothed haplotype estimates — it is not
-independent of the haplotype scan.
+estimates and runs a Wald test (df=1) at every SNP. It tests at individual SNP
+positions rather than haplotype windows, but the signal comes from the same
+smoothed haplotype estimates — it is not independent of the haplotype scan.
 
-Outputs: `snp_scan.txt` (Wald -log10(p) per SNP) and `snp_meansBySample.txt`
-(imputed ALT frequency per SNP per treatment per replicate). Heritability is
-not estimated at the SNP level — H² is a property of genomic regions, not
-individual SNPs (see Step 5a for H² estimates).
-
-The SNP scan uses the same smoothed data as the haplotype scan, so `run_scan.sh`
-(Step 5a) must have already run. Use `--after` to chain it after a running scan,
-or run it any time after the haplotype scan has completed.
+`run_scan.sh` must have already run before starting the SNP scan.
 
 ### SNP table
 
-The scan requires a table of per-founder allele frequencies at every SNP. This is
-a one-time preparation step per population — see `helpfiles/snp_tables/` for
-details.
+The scan requires per-founder SNP state tables — one-time preparation per
+population. See `pipeline/helpfiles/snp_tables/` for preparation details.
+Pre-built tables for A-pop and B-pop are included in this repo.
 
 ### Run the SNP scan
 
 ```bash
-bash scripts/run_snp_scan.sh \
+bash pipeline/scripts/run_snp_scan.sh \
     --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
     --scan      <scan_name> \
-    --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
     --founders  A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-Use the same `--scan` name as Step 5a — the SNP scan output goes into the same
-directory alongside the haplotype scan results.
-
-### Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--design` | (required) | Path to design file |
-| `--dir` | (required) | Project directory |
-| `--scan` | (required) | Scan name (same as Step 5a) |
-| `--snp-table` | (required) | SNP frequency table |
-| `--founders` | (required) | Comma-separated founder names matching SNP table columns |
-| `--mem-per-cpu` | 3G | Memory per CPU for all jobs (SLURM `--mem-per-cpu`) |
-| `--cpus-per-task` | 1 | CPUs for all jobs (SLURM `--cpus-per-task`) |
-| `-p` / `--partition` | standard | SLURM partition (e.g. `highmem`) |
-| `-A` / `--account` | tdlong_lab | SLURM account to charge |
-| `--after` | (none) | SLURM job ID to wait on (e.g. from run_scan.sh) |
+Use the same `--scan` name as Step 5a. Options mirror `run_scan.sh`.
 
 ---
 
 ## Step 6 — Generate publication figures
 
-Three plotting scripts produce 5-panel (per-chromosome) figures. Run these
-on the cluster after the scan completes — either submit via sbatch (see worked
-example) or run interactively. Each takes the scan output file as a
-command-line argument.
+Three plotting scripts produce 5-panel (per-chromosome) figures. These are
+submitted via `--wrap` in the worked example scripts, or run interactively.
 
 ### Haplotype Wald scan
 
 ```bash
-Rscript scripts/plot_pseudoscan.R \
+Rscript pipeline/scripts/plot_pseudoscan.R \
     --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
-    --out    process/<project>/<scan_name>/wald.png \
+    --out    process/<project>/<scan_name>/<scan_name>.wald.png \
     --format powerpoint \
     --threshold 10
 ```
@@ -366,7 +472,7 @@ Rscript scripts/plot_pseudoscan.R \
 Overlay two scans (e.g. male vs female):
 
 ```bash
-Rscript scripts/plot_pseudoscan.R \
+Rscript pipeline/scripts/plot_pseudoscan.R \
     --scan   process/<project>/<scan_M>/<scan_M>.scan.txt \
     --scan   process/<project>/<scan_F>/<scan_F>.scan.txt \
     --label  Male --label Female \
@@ -378,37 +484,35 @@ Rscript scripts/plot_pseudoscan.R \
 ### Heritability overlay (Falconer + Cutler)
 
 ```bash
-Rscript scripts/plot_H2_overlay.R \
+Rscript pipeline/scripts/plot_H2_overlay.R \
     --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
-    --out    process/<project>/<scan_name>/H2.png \
+    --out    process/<project>/<scan_name>/<scan_name>.H2.png \
     --format powerpoint
 ```
 
 ### SNP scan
 
 ```bash
-Rscript scripts/plot_freqsmooth_snp.R \
+Rscript pipeline/scripts/plot_freqsmooth_snp.R \
     --scan   process/<project>/<scan_name>/<scan_name>.snp_scan.txt \
-    --out    process/<project>/<scan_name>/snp_wald.png \
+    --out    process/<project>/<scan_name>/<scan_name>.snp.wald.png \
     --format powerpoint --threshold 10
 ```
 
 ### Common options
 
-All three scripts accept these arguments:
-
 | Flag | Description |
 |------|-------------|
-| `--scan <file>` | Input scan file (required; repeat for overlays in pseudoscan/snp) |
+| `--scan <file>` | Input scan file (required; repeat for overlays) |
 | `--out <file>` | Output PNG path (required) |
 | `--format <name>` | Size/DPI preset (default: `powerpoint`) |
 | `--threshold <n>` | Dashed horizontal line at this y value |
-| `--genes <file>` | Tab-delimited gene annotations (columns: `name`, `chr`, `pos_mb`) |
-| `--peaks <file>` | Tab-delimited peak annotations (columns: `label`, `chr`, `pos_mb`) |
-| `--height <in>` | Override figure height in inches (default: 1.4 per chromosome) |
+| `--genes <file>` | Tab-delimited gene annotations (`name`, `chr`, `pos_mb`) |
+| `--peaks <file>` | Tab-delimited peak annotations (`label`, `chr`, `pos_mb`) |
+| `--height <in>` | Override figure height in inches |
 
 `plot_pseudoscan.R` and `plot_freqsmooth_snp.R` also accept `--label` and
-`--colour` (one per `--scan`, for overlays).
+`--colour` (one per `--scan`) for overlays.
 
 ### FORMAT presets
 
@@ -422,111 +526,23 @@ All three scripts accept these arguments:
 | `web` | 7.0 in | 150 | web/HTML |
 | `email` | 6.0 in | 100 | email preview |
 
-### Gene and peak annotation files
-
-To label genes or peaks on any figure, create a tab-delimited text file and
-pass it with `--genes` or `--peaks`. These work with all three plot engines.
-
-`helpfiles/<project>/genes.txt`:
+### Gene and peak annotations
 
 ```
+# helpfiles/<project>/genes.txt
 name	chr	pos_mb
 Ace	chr3R	9.07
 Cyp6g1	chr2R	12.19
 ```
 
-`helpfiles/<project>/peaks.txt`:
-
-```
-label	chr	pos_mb
-peak1	chr3R	9.1
-```
-
-```bash
-Rscript scripts/plot_pseudoscan.R \
-    --scan ... --out ... --format powerpoint \
-    --genes helpfiles/<project>/genes.txt \
-    --peaks helpfiles/<project>/peaks.txt
-```
-
----
-
-## Step 7 — Download results
-
-The figure step (Step 6) bundles everything into a single tarball at the end.
-
-```bash
-scp <user>@<cluster>:<project_path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
-tar xzf <scan_name>.tar.gz
-```
-
-**What's in the tarball** (all `.txt` and `.png` files in the scan directory):
-
-| File | Contents |
-|------|----------|
-| `<scan>.scan.txt` | Haplotype scan results (one row per window) |
-| `<scan>.meansBySample.txt` | Smoothed founder haplotype frequencies (one row per window × treatment × replicate × founder) |
-| `<scan>.snp_scan.txt` | SNP scan results (one row per SNP; if SNP scan was run) |
-| `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies (one row per SNP × treatment × replicate; if SNP scan was run) |
-| `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
-| `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
-| `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan (if SNP scan was run) |
-| `<scan>.5panel.*.png`, `<scan>.Manhattan.png` | Quick-look plots from concat step |
-
-### Output file formats
-
-**`<scan>.scan.txt`** — haplotype scan (produced by `hap_scan.R`, one row per haplotype window):
-
-| Column | Description |
-|--------|-------------|
-| `chr` | Chromosome |
-| `pos` | Window center (bp) |
-| `Wald_log10p` | -log10(p) from Wald test |
-| `Falc_H2` | Falconer heritability estimate |
-| `Cutl_H2` | Cutler heritability estimate |
-| `cM` | Genetic map position (centiMorgans) |
-
-**`<scan>.meansBySample.txt`** — smoothed founder frequencies (produced by `smooth_haps.R`):
-
-| Column | Description |
-|--------|-------------|
-| `chr` | Chromosome |
-| `pos` | Window center (bp) |
-| `TRT` | Treatment: `C` (control) or `Z` (selected) |
-| `REP` | Replicate number |
-| `founder` | Founder name (e.g. A1, A2, ..., AB8) |
-| `freq` | Smoothed founder haplotype frequency |
-
-**`<scan>.snp_scan.txt`** — SNP scan (produced by `snp_scan.R`, one row per SNP):
-
-| Column | Description |
-|--------|-------------|
-| `chr` | Chromosome |
-| `pos` | SNP position (bp) |
-| `Wald_log10p` | -log10(p) from Wald test |
-| `cM` | Genetic map position (centiMorgans) |
-| `n_informative_founders` | Number of founders carrying the ALT allele |
-
-**`<scan>.snp_meansBySample.txt`** — imputed SNP frequencies (produced by `snp_scan.R`):
-
-| Column | Description |
-|--------|-------------|
-| `chr` | Chromosome |
-| `pos` | SNP position (bp) |
-| `TRT` | Treatment: `C` (control) or `Z` (selected) |
-| `REP` | Replicate number |
-| `F_alt` | Imputed ALT allele frequency |
-| `cM` | Genetic map position (centiMorgans) |
+Pass with `--genes helpfiles/<project>/genes.txt` (works with all three plotters).
 
 ### Interactive exploration (optional)
 
-`scripts/XQTL_plotting_functions.R` provides functions for zooming into peaks
-and making regional plots in an R session:
-
 ```r
-source("scripts/XQTL_plotting_functions.R")
-df1 <- as_tibble(read.table("SCAN_NAME.scan.txt"))
-df2 <- as_tibble(read.table("SCAN_NAME.meansBySample.txt"))
+source("pipeline/scripts/XQTL_plotting_functions.R")
+df1 <- as_tibble(read.table("process/<project>/<scan>/<scan>.scan.txt"))
+df2 <- as_tibble(read.table("process/<project>/<scan>/<scan>.meansBySample.txt"))
 
 XQTL_Manhattan_5panel(df1, cM = FALSE)
 XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
@@ -536,113 +552,86 @@ XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 
 ---
 
-## Worked example — end-to-end pipeline
+## Step 7 — Download results
 
-Copy this to `scripts_oneoffs/<project>_pipeline.sh`, fill in the variables at
-the top, and run it. Everything runs on the cluster — scans, figures, tarballs.
-When it's done, scp the results down.
-
-**What you need before running:** the four input files from Steps 2–5 above
-(barcode file, hap_params.R, design file) and raw reads in `data/raw/<project>/`.
-
-**What you get when it finishes:** for each scan, a directory containing
-haplotype scan tables, SNP scan tables, Manhattan plots, heritability figures,
-and tarballs ready to download.
+The figure scripts bundle everything into a tarball at the end of the worked
+example pipeline. Download it:
 
 ```bash
-#!/bin/bash
-set -e
-
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Fill these in for your experiment                                       ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
-PROJECT=myproject
-BARCODES=helpfiles/${PROJECT}/${PROJECT}.barcodes.txt
-PARFILE=helpfiles/${PROJECT}/hap_params.R
-DESIGN=helpfiles/${PROJECT}/design.txt
-SCAN=${PROJECT}_smooth250
-SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz   # or Bpop for B-population
-FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
-
-# ── Step 2: Align reads ─────────────────────────────────────────────────────
-NN=$(wc -l < ${BARCODES})
-mkdir -p data/bam/${PROJECT}
-jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
-    ${BARCODES} data/raw/${PROJECT} data/bam/${PROJECT})
-
-# ── Step 3: REFALT counts ───────────────────────────────────────────────────
-mkdir -p process/${PROJECT}
-find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
-grep "A" helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bam_list.txt   # or "B" for B-pop
-jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
-    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
-
-# ── Step 4: Call haplotypes ──────────────────────────────────────────────────
-jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
-    --array=1-5 scripts/REFALT2haps.sh \
-    --parfile ${PARFILE} --dir process/${PROJECT})
-
-# ── Step 5a: Haplotype scan (smooth → Wald test + H² → concat) ──────────────
-scan_out=$(bash scripts/run_scan.sh \
-    --design ${DESIGN} \
-    --dir    process/${PROJECT} \
-    --scan   ${SCAN} \
-    --after  ${jid_haps})
-echo "$scan_out"
-jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
-
-# ── Step 5b: SNP scan (optional — delete this block if not needed) ──────────
-snp_out=$(bash scripts/run_snp_scan.sh \
-    --design    ${DESIGN} \
-    --dir       process/${PROJECT} \
-    --scan      ${SCAN} \
-    --snp-table ${SNP_TABLE} \
-    --founders  ${FOUNDERS})
-echo "$snp_out"
-jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
-
-# ── Step 6: Figures + final tarball (runs after all scans finish) ─────────────
-SCAN_DIR=process/${PROJECT}/${SCAN}
-sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
-    --wrap="module load R/4.2.2 && \
-Rscript scripts/plot_pseudoscan.R \
-    --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out       ${SCAN_DIR}/${SCAN}.wald.png \
-    --format    powerpoint \
-    --threshold 10 && \
-Rscript scripts/plot_H2_overlay.R \
-    --scan   ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out    ${SCAN_DIR}/${SCAN}.H2.png \
-    --format powerpoint && \
-Rscript scripts/plot_freqsmooth_snp.R \
-    --scan      ${SCAN_DIR}/${SCAN}.snp_scan.txt \
-    --out       ${SCAN_DIR}/${SCAN}.snp.wald.png \
-    --format    powerpoint \
-    --threshold 10 && \
-cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
-
-echo "All jobs submitted."
-echo "When done: scp <user>@<cluster>:$(pwd)/${SCAN_DIR}/${SCAN}.tar.gz ."
+scp <user>@<cluster>:<path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
+tar xzf <scan_name>.tar.gz
 ```
+
+**Tarball contents:**
+
+| File | Contents |
+|------|----------|
+| `<scan>.scan.txt` | Haplotype scan (Wald -log10p, H²; one row per window) |
+| `<scan>.meansBySample.txt` | Smoothed founder frequencies per window × treatment × rep × founder |
+| `<scan>.snp_scan.txt` | SNP scan (Wald -log10p; one row per SNP) |
+| `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies |
+| `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
+| `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
+| `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan |
+
+**Output column reference:**
+
+`<scan>.scan.txt` (one row per haplotype window):
+`chr`, `pos` (bp), `Wald_log10p`, `Falc_H2`, `Cutl_H2`, `cM`
+
+`<scan>.snp_scan.txt` (one row per SNP):
+`chr`, `pos`, `Wald_log10p`, `cM`, `n_informative_founders`
+
+`<scan>.meansBySample.txt`:
+`chr`, `pos`, `TRT`, `REP`, `founder`, `freq`
+
+---
+
+## Worked example — malathion resistance
+
+The [mylab-XQTL template](https://github.com/tdlong/mylab-XQTL) includes a
+complete malathion resistance experiment pre-configured as a training run.
+Running it end to end verifies that your pipeline installation is working
+correctly.
+
+**Experimental design:** Four pools of *D. melanogaster* (A-population) were
+exposed to malathion and the survivors sequenced alongside untreated controls —
+two sexes, one replicate each. The dataset is intentionally small (43–65 flies
+per pool) so the full pipeline finishes quickly.
+
+**Setup** (after completing Installation steps 1–4):
+
+```bash
+# Download the malathion BAMs into your project repo
+mkdir -p data/bam/malathion
+wget https://wfitch.bio.uci.edu/~tdlong/malathion_bams.tar
+tar -xf malathion_bams.tar -C data/bam/malathion/
+rm malathion_bams.tar
+```
+
+**Run the pipeline** (starts at Step 3 — BAMs are already provided):
+
+```bash
+bash scripts_oneoffs/malathion/malathion_pipeline.sh
+```
+
+The script chains Steps 3–6 with SLURM dependencies and prints each job ID.
+When complete, download the results tarball and check for a signal on chr3R
+around 9 Mb. For biological interpretation see [Long et al. 2022](https://pubmed.ncbi.nlm.nih.gov/36250804/).
 
 ---
 
 ## Worked example — adding replicates to an existing experiment
 
-You sequenced 3 replicates, ran the pipeline, then sequenced 3 more. Now you
-want to reanalyze with all 6. The existing bams and process directory are still
-on the cluster — you only need to align the new samples, then rerun from Step 3
-onward with all bams combined.
+You sequenced 3 replicates, ran the pipeline, then sequenced 3 more. You only
+need to align the new samples, then rerun from Step 3 with all BAMs combined.
 
 **What changes:**
-- New barcode file for the new samples only (or append to original)
-- `helpfiles/<project>/bam_list.txt` rebuilt to include old + new bam paths
+- New barcode file for the new samples
+- `helpfiles/<project>/bam_list.txt` rebuilt to include all BAM paths
 - `helpfiles/<project>/hap_params.R` updated: add new sample names to `names_in_bam`
 - `helpfiles/<project>/design.txt` updated: add rows for new samples
-- New scan name (e.g. `myproject_6rep_smooth250`) so you don't overwrite the 3-rep results
-
-**What stays the same:** founder bams, reference genome, SNP table, all scripts.
+- New scan name so you don't overwrite the 3-rep results
 
 ```bash
 #!/bin/bash
@@ -652,117 +641,103 @@ PROJECT=myproject
 PARFILE=helpfiles/${PROJECT}/hap_params.R
 DESIGN=helpfiles/${PROJECT}/design.txt
 SCAN=${PROJECT}_6rep_smooth250
-SNP_TABLE=helpfiles/FREQ_SNPs_Apop.cM.txt.gz
+SNP_TABLE=pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz
 FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
 
-# ── Step 2: Align NEW samples only ───────────────────────────────────────────
+# Align NEW samples only
 NEW_BARCODES=helpfiles/${PROJECT}/${PROJECT}_batch2.barcodes.txt
 NN=$(wc -l < ${NEW_BARCODES})
-jid_bam=$(sbatch --parsable --array=1-${NN} scripts/fq2bam.sh \
+jid_bam=$(sbatch --parsable --array=1-${NN} pipeline/scripts/fq2bam.sh \
     ${NEW_BARCODES} data/raw/${PROJECT}_batch2 data/bam/${PROJECT})
 
-# ── Step 3: Rebuild bams list (old + new) and rerun REFALT ───────────────────
-#   Old bams are already in data/bam/<project>/ from the first run.
-#   After alignment finishes, combine all bam paths into one file.
-find data/bam/${PROJECT} -name "*.bam" -size +1G > helpfiles/${PROJECT}/bam_list.txt
-grep "A" helpfiles/founder.bams.txt >> helpfiles/${PROJECT}/bam_list.txt   # or "B" for B-pop
+# Rebuild bam_list with old + new, rerun REFALT
+# Update helpfiles/${PROJECT}/bam_list.txt to include all sample BAMs (old + new)
+# then review and commit before submitting
 
 jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
-    scripts/bam2bcf2REFALT.sh helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
+    pipeline/scripts/bam2bcf2REFALT.sh \
+    helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
 
-# ── Step 4: Rerun haplotype calling with all samples ─────────────────────────
-#   Make sure hap_params.R has been updated with all sample names.
+# Rerun haplotypes (hap_params.R must be updated with all sample names)
 jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
-    --array=1-5 scripts/REFALT2haps.sh \
+    --array=1-5 pipeline/scripts/REFALT2haps.sh \
     --parfile ${PARFILE} --dir process/${PROJECT})
 
-# ── Step 5a: Haplotype scan ─────────────────────────────────────────────────
-scan_out=$(bash scripts/run_scan.sh \
-    --design ${DESIGN} \
-    --dir    process/${PROJECT} \
-    --scan   ${SCAN} \
-    --after  ${jid_haps})
-echo "$scan_out"
+# Scan
+scan_out=$(bash pipeline/scripts/run_scan.sh \
+    --design ${DESIGN} --dir process/${PROJECT} \
+    --scan ${SCAN} --after ${jid_haps})
 jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
 
-# ── Step 5b: SNP scan ───────────────────────────────────────────────────────
-snp_out=$(bash scripts/run_snp_scan.sh \
-    --design    ${DESIGN} \
-    --dir       process/${PROJECT} \
-    --scan      ${SCAN} \
-    --snp-table ${SNP_TABLE} \
-    --founders  ${FOUNDERS})
-echo "$snp_out"
+snp_out=$(bash pipeline/scripts/run_snp_scan.sh \
+    --design ${DESIGN} --dir process/${PROJECT} \
+    --scan ${SCAN} --snp-table ${SNP_TABLE} --founders ${FOUNDERS})
 jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
 
-# ── Step 6: Figures + tarball ────────────────────────────────────────────────
+# Figures
 SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
     -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
     --wrap="module load R/4.2.2 && \
-Rscript scripts/plot_pseudoscan.R \
-    --scan      ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out       ${SCAN_DIR}/${SCAN}.wald.png \
-    --format    powerpoint \
-    --threshold 10 && \
-Rscript scripts/plot_H2_overlay.R \
-    --scan   ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out    ${SCAN_DIR}/${SCAN}.H2.png \
-    --format powerpoint && \
-Rscript scripts/plot_freqsmooth_snp.R \
-    --scan      ${SCAN_DIR}/${SCAN}.snp_scan.txt \
-    --out       ${SCAN_DIR}/${SCAN}.snp.wald.png \
-    --format    powerpoint \
-    --threshold 10 && \
+Rscript pipeline/scripts/plot_pseudoscan.R \
+    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out  ${SCAN_DIR}/${SCAN}.wald.png --format powerpoint --threshold 10 && \
+Rscript pipeline/scripts/plot_H2_overlay.R \
+    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
+    --out  ${SCAN_DIR}/${SCAN}.H2.png --format powerpoint && \
+Rscript pipeline/scripts/plot_freqsmooth_snp.R \
+    --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt \
+    --out  ${SCAN_DIR}/${SCAN}.snp.wald.png --format powerpoint --threshold 10 && \
 cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
-
-echo "All jobs submitted."
 ```
 
-The key difference from a fresh run: you only align the new samples (Step 2),
-but Steps 3–4 must rerun with **all** bams because SNP calling and haplotype
-inference are joint across all samples. Use a new scan name so the original
-results are preserved for comparison.
+Steps 3–4 must rerun with **all** BAMs because SNP calling and haplotype
+inference are joint across all samples. Use a new scan name to preserve the
+original results.
 
 ---
 
 ## Directory structure
 
 ```
-XQTL2/
-├── scripts/              # Core pipeline scripts (tracked in git)
-├── scripts_oneoffs/      # Experiment-specific submit scripts (not tracked)
-├── helpfiles/
+XQTL2/                          ← this repo (pipeline — clone once per machine)
+├── scripts/                    # Core pipeline scripts (tracked)
+├── helpfiles/                  # Shared reference data (tracked)
+│   ├── A_founders.bams.txt        # relative paths — no editing needed
+│   ├── B_founders.bams.txt
 │   ├── flymap.r6.txt
-│   ├── founder.bams.txt
-│   ├── FREQ_SNPs.cM.txt.gz              (SNP frequencies — see snp_tables/)
-│   ├── FREQ_SNPs_Apop.cM.txt.gz         (A-pop subset, from prep_snp_table.R)
-│   ├── FREQ_SNPs_Bpop.cM.txt.gz         (B-pop subset)
-│   ├── snp_tables/README.md              (documents SNP table preparation)
+│   ├── het_bounds.txt
+│   ├── FREQ_SNPs_Apop.cM.txt.gz
+│   ├── FREQ_SNPs_Bpop.cM.txt.gz
+│   ├── snp_tables/
+│   └── generic_haplotype_parameters.R
+├── ref/                        # Reference genome (not tracked — set up once)
+└── data/founders/              # Founder BAMs (not tracked — set up once)
+
+LongLab-XQTL/                   ← your project repo (any name)
+├── pipeline -> ../XQTL2        # symlink — create after cloning
+├── helpfiles/
+│   └── <project>/              # your project config files (track in git)
+│       ├── <project>.barcodes.txt
+│       ├── bam_list.txt
+│       ├── hap_params.R
+│       └── design.txt
+├── scripts_oneoffs/
 │   └── <project>/
-│       ├── <project>.barcodes.txt        (Step 2)
-│       ├── bam_list.txt                  (Step 3)
-│       ├── hap_params.R                  (Step 4)
-│       └── design.txt                    (Step 5)
+│       └── <project>_pipeline.sh
 ├── data/
-│   ├── raw/<project>/                    (Step 1 — raw reads)
-│   └── bam/<project>/                    (Step 2 — aligned bams)
-├── ref/                  # Reference genome (not tracked)
-├── process/
-│   └── <project>/
-│       ├── RefAlt.<chr>.txt              (Step 3)
-│       ├── R.haps.<chr>.rds              (Step 4 — SNP table)
-│       ├── R.haps.<chr>.out.rds          (Step 4 — haplotype estimates)
-│       └── <scan_name>/                  (Step 5)
-│           ├── <scan_name>.scan.txt
-│           ├── <scan_name>.meansBySample.txt
-│           ├── <scan_name>.snp_scan.txt
-│           └── <scan_name>.tar.gz
-└── figures/              # Publication figures (not tracked)
+│   ├── raw/<project>/          (not tracked)
+│   └── bam/<project>/          (not tracked)
+└── process/<project>/          (not tracked)
+    ├── RefAlt.<chr>.txt
+    ├── R.haps.<chr>.rds
+    └── <scan_name>/
+        ├── <scan_name>.scan.txt
+        └── <scan_name>.tar.gz
 ```
 
-To check what exists for a given project on the cluster:
+To check what exists for a project on the cluster:
 
 ```bash
-bash scripts/show_project_layout.sh <project>
+bash pipeline/scripts/show_project_layout.sh <project>
 ```
