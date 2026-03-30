@@ -176,23 +176,32 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
     filter(chr %in% chr_order)
 
   if (nrow(peaks_df) > 0) {
-    # Find the y value at each peak position for smart label placement
+    # Find the max y value across ALL scans at each peak position
     peaks_df <- peaks_df %>%
       rowwise() %>%
       mutate(y_val = {
-        s <- scans_df %>% filter(chr == .data$chr, label == scan_labels[1])
-        if (nrow(s) == 0) 0 else s$Wald_log10p[which.min(abs(s$pos_mb - pos_mb))]
+        s <- scans_df %>% filter(chr == .data$chr)
+        if (nrow(s) == 0) 0 else max(
+          sapply(scan_labels, function(lbl) {
+            ss <- s %>% filter(label == lbl)
+            if (nrow(ss) == 0) 0 else ss$Wald_log10p[which.min(abs(ss$pos_mb - pos_mb))]
+          }), na.rm = TRUE)
       }) %>%
       ungroup()
 
-    # Position labels above the data with proportional offset
-    y_range <- max(scans_df$Wald_log10p, na.rm = TRUE)
+    # Per-chromosome y ranges so offsets scale to each panel's local axis
+    chr_ymax <- scans_df %>%
+      group_by(chr) %>%
+      summarise(y_range = max(Wald_log10p, na.rm = TRUE), .groups = "drop")
+
     peaks_df <- peaks_df %>%
-      mutate(y_label = y_val + y_range * 0.08)
+      left_join(chr_ymax, by = "chr") %>%
+      mutate(y_triangle = y_val + y_range * 0.03,
+             y_label    = y_val + y_range * 0.11)
 
     p <- p +
       geom_point(data = peaks_df,
-                 aes(x = pos_mb, y = y_val),
+                 aes(x = pos_mb, y = y_triangle),
                  shape = 25, size = 2, fill = NA,
                  colour = "black", stroke = 0.8, inherit.aes = FALSE) +
       geom_text(data = peaks_df,
