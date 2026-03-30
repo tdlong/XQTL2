@@ -1,4 +1,0 @@
-gene_name	chr	pos_bp
-Ace	chr3R	9069721
-Cyp6g1	chr2R	9064616
-Mdr65	chr2R	9163757

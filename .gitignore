@@ -1,6 +1,5 @@
 slurm*
 !Slurm.md
-process.Dec6/
 
 # large data/archives
 *.tar
@@ -23,12 +22,29 @@ data/
 ref/
 figures/
 process/
+output/
+logs/
+configs/
+
 # temp folder inside scripts
 scripts/temp/
 
-# configs folder exists publicly but contents are private
-configs/*
-!configs/.gitkeep
+# project-specific files — these belong in the user's project repo, not here
+scripts_oneoffs/
+helpfiles/AGE*/
+helpfiles/B6885/
+helpfiles/JUICE/
+helpfiles/MALATHION/
+helpfiles/malathion_test/
+helpfiles/MTX/
+helpfiles/pupalHeight2/
+helpfiles/STARVE/
+helpfiles/YW/
+helpfiles/ZINC*/
+
+# the pipeline symlink is machine-specific
+pipeline
 
 # one-off cluster state output
 check_cluster_state.out.txt
+*.DS_Store

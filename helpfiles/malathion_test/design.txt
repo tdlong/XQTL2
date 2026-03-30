@@ -1,5 +1,0 @@
-"bam" "TRT" "REP" "REPrep" "Num" "Proportion"
-"1" "s_F_1" "Z" 1 1 500 0.01
-"2" "c_F_1" "C" 1 1 500 NA
-"3" "s_M_1" "Z" 2 1 500 0.01
-"4" "c_M_1" "C" 2 1 500 NA
