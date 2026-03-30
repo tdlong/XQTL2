@@ -176,22 +176,23 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
     filter(chr %in% chr_order)
 
   if (nrow(peaks_df) > 0) {
-    # Find the max Wald across ALL scans at each peak's position.
-    # Use the nearest scan position (not exact match).
-    peaks_df <- peaks_df %>%
-      rowwise() %>%
-      mutate(y_val = {
-        s <- scans_df %>% filter(chr == .data$chr)
-        if (nrow(s) == 0) 0 else {
-          vals <- sapply(unique(s$label), function(lbl) {
-            ss <- s %>% filter(label == lbl)
-            if (nrow(ss) == 0) return(0)
-            ss$Wald_log10p[which.min(abs(ss$pos_mb - .data$pos_mb))]
-          })
-          max(vals, na.rm = TRUE)
-        }
-      }) %>%
-      ungroup()
+    # Find the max Wald across ALL scans at each peak's nearest position.
+    # Loop avoids rowwise+sapply closure issues with .data pronoun.
+    y_vals <- numeric(nrow(peaks_df))
+    for (k in seq_len(nrow(peaks_df))) {
+      pk_chr <- peaks_df$chr[k]
+      pk_pos <- peaks_df$pos_mb[k]
+      s <- scans_df %>% filter(chr == pk_chr)
+      if (nrow(s) == 0) { y_vals[k] <- 0; next }
+      best <- 0
+      for (lbl in unique(s$label)) {
+        ss <- s %>% filter(label == lbl)
+        val <- ss$Wald_log10p[which.min(abs(ss$pos_mb - pk_pos))]
+        if (val > best) best <- val
+      }
+      y_vals[k] <- best
+    }
+    peaks_df$y_val <- y_vals
 
     # Per-chromosome y ranges so offsets scale to each panel's local axis
     chr_ymax <- scans_df %>%
