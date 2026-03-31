@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 ###############################################################################
-# plot_pseudoscan.R — 5-panel Wald -log10(p) line plot from haplotype scan
+# plot_pseudoscan.R — 5-panel line plot from haplotype scan
 #
 # Usage:
 #   Rscript scripts/plot_pseudoscan.R \
@@ -17,6 +17,7 @@
 #       --out overlay.png --format powerpoint
 #
 # Optional:
+#   --column Cutl_H2      y-axis column (default: Wald_log10p)
 #   --threshold 10        dashed horizontal line
 #   --genes genes.txt     tab-delimited: name, chr, pos_mb
 #   --peaks peaks.txt     tab-delimited: label, chr, pos_mb
@@ -33,6 +34,7 @@ scan_labels <- character(0)
 scan_colours <- character(0)
 out_file <- NULL
 format_name <- "powerpoint"
+y_column <- "Wald_log10p"
 threshold <- NULL
 genes_file <- NULL
 peaks_file <- NULL
@@ -47,6 +49,7 @@ while (i <= length(args)) {
     "--color"     = { scan_colours <- c(scan_colours, args[i+1]); i <- i + 2 },
     "--out"       = { out_file     <- args[i+1]; i <- i + 2 },
     "--format"    = { format_name  <- args[i+1]; i <- i + 2 },
+    "--column"    = { y_column     <- args[i+1]; i <- i + 2 },
     "--threshold" = { threshold    <- as.numeric(args[i+1]); i <- i + 2 },
     "--genes"     = { genes_file   <- args[i+1]; i <- i + 2 },
     "--peaks"     = { peaks_file   <- args[i+1]; i <- i + 2 },
@@ -97,12 +100,21 @@ scans_df <- map_dfr(seq_along(scan_files), function(j) {
     mutate(pos_mb = pos / 1e6, label = scan_labels[j])
 }) %>%
   mutate(chr = factor(chr, levels = chr_order)) %>%
-  filter(!is.na(Wald_log10p), chr %in% chr_order)
+  filter(!is.na(.data[[y_column]]), chr %in% chr_order)
 
 if (nrow(scans_df) == 0) stop("No scan data loaded — check --scan paths.")
 
 if (is.null(out_height))
   out_height <- length(unique(as.character(scans_df$chr))) * 1.4
+
+# ── Y-axis label based on column ─────────────────────────────────────────────
+y_label <- if (y_column == "Wald_log10p") {
+  expression(-log[10](italic(P)) ~ "Wald")
+} else if (grepl("_H2$", y_column)) {
+  bquote(italic(H)^2 ~ .(sub("_H2$", "", y_column)))
+} else {
+  y_column
+}
 
 colour_map <- setNames(scan_colours, scan_labels)
 
@@ -124,7 +136,7 @@ het_rects <- HET_BOUNDS %>%
 
 # ── Plot ─────────────────────────────────────────────────────────────────────
 p <- ggplot(scans_df,
-            aes(x = pos_mb, y = Wald_log10p, colour = label, group = label)) +
+            aes(x = pos_mb, y = .data[[y_column]], colour = label, group = label)) +
   geom_rect(data = het_rects,
             aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
             fill = "grey85", alpha = 0.5, colour = NA, inherit.aes = FALSE) +
@@ -138,7 +150,7 @@ p <- ggplot(scans_df,
   scale_colour_manual(values = colour_map, name = NULL) +
   scale_x_continuous(expand = expansion(0)) +
   scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.15))) +
-  labs(x = "Position (Mb)", y = expression(-log[10](italic(P)) ~ "Wald")) +
+  labs(x = "Position (Mb)", y = y_label) +
   theme_classic(base_size = BASE_FONT) +
   theme(
     legend.position        = if (length(scan_files) > 1) "top" else "none",
@@ -188,7 +200,7 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
       best <- 0
       for (lbl in unique(s$label)) {
         ss <- s %>% filter(label == lbl)
-        val <- ss$Wald_log10p[which.min(abs(ss$pos_mb - pk_pos))]
+        val <- ss[[y_column]][which.min(abs(ss$pos_mb - pk_pos))]
         if (val > best) best <- val
       }
       y_vals[k] <- best
@@ -198,7 +210,7 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
     # Per-chromosome y ranges so offsets scale to each panel's local axis
     chr_ymax <- scans_df %>%
       group_by(chr) %>%
-      summarise(y_range = max(Wald_log10p, na.rm = TRUE), .groups = "drop")
+      summarise(y_range = max(.data[[y_column]], na.rm = TRUE), .groups = "drop")
 
     peaks_df <- peaks_df %>%
       left_join(chr_ymax, by = "chr") %>%
