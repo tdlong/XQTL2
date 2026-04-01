@@ -733,8 +733,9 @@ tar xzf heatshock_smooth250.tar.gz
 
 ### Rerunning with different parameters
 
-If you already have BAMs and want to rerun from REFALT (e.g. different
-window sizes):
+If you've added new samples to an existing project (aligned them with
+`fq2bam.sh`, updated your bam_list, hap_params, and design), rerun
+everything from REFALT onward:
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
