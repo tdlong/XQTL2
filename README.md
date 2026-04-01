@@ -233,6 +233,7 @@ first project-specific config file — a good time to commit:
 ```bash
 git add helpfiles/<project>/<project>.barcodes.txt
 git commit -m "add barcode file for <project>"
+git push
 ```
 
 ### Run alignment
@@ -299,9 +300,10 @@ cat pipeline/helpfiles/A_founders.bams.txt >> helpfiles/<project>/bam_list.txt
 # Review — confirm every sample and every founder is present, no extras
 cat helpfiles/<project>/bam_list.txt
 
-# Commit — this records exactly what went into your analysis
+# Commit and push — this records exactly what went into your analysis
 git add helpfiles/<project>/bam_list.txt
 git commit -m "add bam list for <project>"
+git push
 ```
 
 ```bash
@@ -359,6 +361,7 @@ Commit the parameters file:
 ```bash
 git add helpfiles/<project>/hap_params.R
 git commit -m "add haplotype parameters for <project>"
+git push
 ```
 
 ### Run haplotype calling
@@ -414,6 +417,7 @@ write.table(design, "helpfiles/<project>/design.txt")
 ```bash
 git add helpfiles/<project>/design.txt
 git commit -m "add design file for <project>"
+git push
 ```
 
 ### Option A — One-command scan (recommended)
@@ -631,6 +635,54 @@ XQTL_region(df1, "chr3R", 18250000, 19000000, "Wald_log10p")
 XQTL_change_average(df2, "chr3R", 18250000, 19000000)
 XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 ```
+
+---
+
+## Running the full pipeline with one command
+
+Once you have all your config files ready (barcodes, bam_list, hap_params,
+design), `run_full_pipeline.sh` chains every step with SLURM dependencies —
+submit once and walk away:
+
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --project     <project> \
+    --barcodes    helpfiles/<project>/<project>.barcodes.txt \
+    --rawdir      data/raw/<project> \
+    --bamdir      data/bam/<project> \
+    --parfile     helpfiles/<project>/hap_params.R \
+    --design      helpfiles/<project>/design.txt \
+    --scan        <scan_name> \
+    --founders    A \
+    --snp-table   pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+```
+
+This is a good time to commit your pipeline script too:
+
+```bash
+git add scripts_oneoffs/<project>/<project>_pipeline.sh
+git commit -m "add end-to-end pipeline for <project>"
+git push
+```
+
+If you already have BAMs (e.g. from a previous run), skip alignment:
+
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam \
+    --project <project> --parfile ... --design ... --scan <new_scan> ...
+```
+
+If you already have haplotypes and just want a new scan with a different design:
+
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam --skip-refalt \
+    --project <project> --parfile ... --design ... --scan <new_scan> ...
+```
+
+All SLURM flags (`--mem-per-cpu`, `-p`, `-A`) are passed through to every job.
 
 ---
 
