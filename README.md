@@ -115,48 +115,60 @@ cd LongLab-XQTL
 ln -s ../XQTL2 pipeline   # all pipeline calls go through this symlink
 ```
 
-Replace `LongLab-XQTL` with any name — `SmithLab-XQTL`, `MyProject`, whatever
-makes sense for your group. The `pipeline` symlink is the only path that matters.
-
-Now create your own GitHub repo and push to it. On GitHub, click **New
-repository**, name it to match your directory, then:
-
-```bash
-git remote set-url origin https://github.com/<you>/LongLab-XQTL.git
-git push -u origin main
-```
-
-That's it — your project is now backed up on GitHub and you can clone it onto
-other machines (your laptop, another cluster) with a single command. From here
-on, the normal git cycle keeps everything in sync:
-
-```bash
-git add <files>
-git commit -m "describe what changed"
-git push
-```
-
-On another machine, `git pull` brings it up to date.
+Replace `LongLab-XQTL` with whatever makes sense for your group. The
+`pipeline` symlink is the only path that matters.
 
 All your submission scripts call `pipeline/scripts/run_scan.sh` etc. through
 the symlink. When XQTL2 is updated, run `git pull` inside the XQTL2 directory
 — your scripts automatically use the new version.
 
-### Why this matters
+### Version control with git (optional but recommended)
 
-Because the pipeline (XQTL2) and your project are separate repos, your project
-repo contains everything *you* created: barcode files, BAM lists, haplotype
-parameters, design files, and submission scripts. Raw reads and large output
-files (BAMs, scans) are gitignored — they're too big for git — but as long as
-the raw FASTQs are backed up, every result can be regenerated from the tracked
-config files plus the pipeline.
+Git is not required — the pipeline works fine without it. But because your
+project is now its own directory, separate from the pipeline, it is easy to
+put it under version control. If you do, you get a complete record of every
+config file you created and every change you made, and you can sync your
+project across machines (e.g. keep your laptop in sync with the cluster).
 
-This means your experiment is reproducible and portable. You can work on the
-cluster, review files on your laptop, and share the repo with a collaborator
-who can see exactly what you ran. Commit early and often — after creating each
-config file, after updating a design, before every `sbatch` submission. Even
-if you're new to git, the commands above (`add`, `commit`, `push`, `pull`) are
-all you need for this workflow.
+**One-time git setup** (skip if you've used git before):
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+You also need a way to authenticate with GitHub. The simplest option is to
+install the [GitHub CLI](https://cli.github.com/) and run `gh auth login`,
+which walks you through it interactively. Alternatively, you can create a
+[personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+on GitHub and paste it when prompted for a password.
+
+**Create your GitHub repo:** go to [github.com/new](https://github.com/new),
+name it whatever you named your directory (e.g. `LongLab-XQTL`), and leave
+it empty (no README, no .gitignore — your clone already has these). Then
+point your local clone at it and push:
+
+```bash
+git remote set-url origin https://github.com/<you>/<YourLab-XQTL>.git
+git push -u origin main
+```
+
+From here on, the git workflow is just four commands:
+
+```bash
+git add <files>                       # stage new or changed files
+git commit -m "describe what changed" # save a snapshot
+git push                              # upload to GitHub
+git pull                              # download changes on another machine
+```
+
+The template's `.gitignore` already excludes large files (BAMs, scan output,
+raw reads). What gets tracked is everything *you* created: barcode files, BAM
+lists, haplotype parameters, design files, and submission scripts. As long as
+the raw FASTQs are backed up separately, every result can be regenerated from
+these tracked config files plus the pipeline.
+
+The steps below will note where it makes sense to commit.
 
 ---
 
@@ -215,7 +227,13 @@ ACTTGCCA    TTGTCAGC    R5con
 TCTTCGTG    TTGTCAGC    R5age
 ```
 
-Save this file to `helpfiles/<project>/<project>.barcodes.txt`.
+Save this file to `helpfiles/<project>/<project>.barcodes.txt`. This is your
+first project-specific config file — a good time to commit:
+
+```bash
+git add helpfiles/<project>/<project>.barcodes.txt
+git commit -m "add barcode file for <project>"
+```
 
 ### Run alignment
 
@@ -280,6 +298,10 @@ cat pipeline/helpfiles/A_founders.bams.txt >> helpfiles/<project>/bam_list.txt
 
 # Review — confirm every sample and every founder is present, no extras
 cat helpfiles/<project>/bam_list.txt
+
+# Commit — this records exactly what went into your analysis
+git add helpfiles/<project>/bam_list.txt
+git commit -m "add bam list for <project>"
 ```
 
 ```bash
@@ -332,6 +354,13 @@ xargs -0 -n1 basename | sed 's/.bam//' | sort | \
 sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//' && echo ")"
 ```
 
+Commit the parameters file:
+
+```bash
+git add helpfiles/<project>/hap_params.R
+git commit -m "add haplotype parameters for <project>"
+```
+
 ### Run haplotype calling
 
 This runs as a 5-task array, one chromosome per task:
@@ -380,6 +409,11 @@ design <- data.frame(
     Proportion = c(NA,0.087,NA,0.154,NA,0.088)
 )
 write.table(design, "helpfiles/<project>/design.txt")
+```
+
+```bash
+git add helpfiles/<project>/design.txt
+git commit -m "add design file for <project>"
 ```
 
 ### Option A — One-command scan (recommended)
