@@ -103,8 +103,10 @@ by substituting the appropriate reference genome, genetic map, and founder BAMs.
 ### 4. Create your project repo
 
 Your experimental data and project-specific scripts live in a separate repo
-alongside XQTL2. Clone the [mylab-XQTL template](https://github.com/tdlong/mylab-XQTL)
-and rename it to whatever suits your lab:
+alongside XQTL2. The [mylab-XQTL template](https://github.com/tdlong/mylab-XQTL)
+gives you a ready-made starting point — clone it, rename it, and make it your
+own. This is one of the key advantages of separating your project from the
+pipeline: you get your own git repo from day one.
 
 ```bash
 cd ..   # move up next to XQTL2/
@@ -116,20 +118,45 @@ ln -s ../XQTL2 pipeline   # all pipeline calls go through this symlink
 Replace `LongLab-XQTL` with any name — `SmithLab-XQTL`, `MyProject`, whatever
 makes sense for your group. The `pipeline` symlink is the only path that matters.
 
-All your submission scripts call `pipeline/scripts/run_scan.sh` etc. When
-XQTL2 is updated, run `git pull` inside the `/path/to/XQTL2` directory — your
-scripts automatically use the new version via the symlink.
+Now create your own GitHub repo and push to it. On GitHub, click **New
+repository**, name it to match your directory, then:
 
-### Use git throughout your project
+```bash
+git remote set-url origin https://github.com/<you>/LongLab-XQTL.git
+git push -u origin main
+```
 
-Your project repo tracks everything needed to reproduce an experiment:
-barcode files, BAM lists, haplotype parameters, design files, and submission
-scripts. Raw reads and large output files (BAMs, scans) are gitignored, but
-as long as the raw FASTQs are backed up, every result can be regenerated from
-the tracked config files. Commit early and often — after creating each config
-file, after updating a design, after a successful run. A good habit is to
-commit before every `sbatch` submission so you have a record of exactly what
-was run.
+That's it — your project is now backed up on GitHub and you can clone it onto
+other machines (your laptop, another cluster) with a single command. From here
+on, the normal git cycle keeps everything in sync:
+
+```bash
+git add <files>
+git commit -m "describe what changed"
+git push
+```
+
+On another machine, `git pull` brings it up to date.
+
+All your submission scripts call `pipeline/scripts/run_scan.sh` etc. through
+the symlink. When XQTL2 is updated, run `git pull` inside the XQTL2 directory
+— your scripts automatically use the new version.
+
+### Why this matters
+
+Because the pipeline (XQTL2) and your project are separate repos, your project
+repo contains everything *you* created: barcode files, BAM lists, haplotype
+parameters, design files, and submission scripts. Raw reads and large output
+files (BAMs, scans) are gitignored — they're too big for git — but as long as
+the raw FASTQs are backed up, every result can be regenerated from the tracked
+config files plus the pipeline.
+
+This means your experiment is reproducible and portable. You can work on the
+cluster, review files on your laptop, and share the repo with a collaborator
+who can see exactly what you ran. Commit early and often — after creating each
+config file, after updating a design, before every `sbatch` submission. Even
+if you're new to git, the commands above (`add`, `commit`, `push`, `pull`) are
+all you need for this workflow.
 
 ---
 
