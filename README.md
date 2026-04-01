@@ -638,48 +638,123 @@ XQTL_combined_plot(df1, df2, "chr3R", 18250000, 19000000)
 
 ---
 
-## Running the full pipeline with one command
+## End-to-end: from raw reads to figures
 
-Once you have all your config files ready (barcodes, bam_list, hap_params,
-design), `run_full_pipeline.sh` chains every step with SLURM dependencies —
-submit once and walk away:
+This section walks through a complete experiment from start to finish. If you
+are using an AI assistant, point it at this README — it can generate the
+commands below for your specific project.
+
+Suppose your experiment is called `heatshock`, uses A-population founders, and
+has 6 samples (3 control, 3 selected). You've already completed Installation
+steps 1–4 and downloaded your raw reads to `data/raw/heatshock/`.
+
+### 1. Create your config files
+
+These are the four files the pipeline needs. The steps above (Steps 2–5)
+explain each one in detail — here we just show the end result.
 
 ```bash
-bash pipeline/scripts/run_full_pipeline.sh \
-    --project     <project> \
-    --barcodes    helpfiles/<project>/<project>.barcodes.txt \
-    --rawdir      data/raw/<project> \
-    --bamdir      data/bam/<project> \
-    --parfile     helpfiles/<project>/hap_params.R \
-    --design      helpfiles/<project>/design.txt \
-    --scan        <scan_name> \
-    --founders    A \
-    --snp-table   pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+mkdir -p helpfiles/heatshock
 ```
 
-This is a good time to commit your pipeline script too:
+**Barcode file** (`helpfiles/heatshock/heatshock.barcodes.txt`) — maps
+sequencing barcodes to sample names:
+
+```
+TGGCTATG	TTGTCAGC	R1con
+GTCCTAGA	TTGTCAGC	R1heat
+ACTTGCCA	TTGTCAGC	R2con
+TCTTCGTG	TTGTCAGC	R2heat
+AAGCGACT	TTGTCAGC	R3con
+CGTGAATC	TTGTCAGC	R3heat
+```
+
+**Haplotype parameters** (`helpfiles/heatshock/hap_params.R`):
+
+```r
+founders     <- c("A1","A2","A3","A4","A5","A6","A7","AB8")
+names_in_bam <- c("R1con","R1heat","R2con","R2heat","R3con","R3heat")
+step         <- 5000
+size         <- 50000
+h_cutoff     <- 2.5
+```
+
+**Design file** (`helpfiles/heatshock/design.txt`) — create in R:
+
+```r
+design <- data.frame(
+    bam        = c("R1con","R1heat","R2con","R2heat","R3con","R3heat"),
+    TRT        = c("C","Z","C","Z","C","Z"),
+    REP        = c(1,1,2,2,3,3),
+    REPrep     = 1,
+    Num        = c(500,100,500,100,500,100),
+    Proportion = c(NA,0.20,NA,0.20,NA,0.20)
+)
+write.table(design, "helpfiles/heatshock/design.txt")
+```
+
+**Commit everything before running:**
 
 ```bash
-git add scripts_oneoffs/<project>/<project>_pipeline.sh
-git commit -m "add end-to-end pipeline for <project>"
+git add helpfiles/heatshock/
+git commit -m "add config files for heatshock experiment"
 git push
 ```
 
-If you already have BAMs (e.g. from a previous run), skip alignment:
+### 2. Run the full pipeline
+
+`run_full_pipeline.sh` chains every step (align → REFALT → haplotypes →
+scan → SNP scan → figures) with SLURM dependency chaining. Submit once and
+walk away:
+
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --project      heatshock \
+    --barcodes     helpfiles/heatshock/heatshock.barcodes.txt \
+    --rawdir       data/raw/heatshock \
+    --bamdir       data/bam/heatshock \
+    --parfile      helpfiles/heatshock/hap_params.R \
+    --design       helpfiles/heatshock/design.txt \
+    --scan         heatshock_smooth250 \
+    --founders     A \
+    --snp-table    pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+```
+
+The script prints each SLURM job ID as it submits. When the final job
+finishes, results are in `process/heatshock/heatshock_smooth250/`.
+
+### 3. Download results
+
+```bash
+scp <user>@<cluster>:<path>/process/heatshock/heatshock_smooth250/heatshock_smooth250.tar.gz .
+tar xzf heatshock_smooth250.tar.gz
+```
+
+### Rerunning with different parameters
+
+If you already have BAMs and want to rerun from REFALT (e.g. different
+window sizes):
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam \
-    --project <project> --parfile ... --design ... --scan <new_scan> ...
+    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
+    --design helpfiles/heatshock/design.txt --scan heatshock_v2 \
+    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-If you already have haplotypes and just want a new scan with a different design:
+If you already have haplotypes and just want a new scan with a different
+design (e.g. different contrasts or subsets of samples):
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt \
-    --project <project> --parfile ... --design ... --scan <new_scan> ...
+    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
+    --design helpfiles/heatshock/design_subset.txt --scan heatshock_subset \
+    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
 All SLURM flags (`--mem-per-cpu`, `-p`, `-A`) are passed through to every job.
