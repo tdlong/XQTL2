@@ -746,12 +746,24 @@ rm malathion_bams.tar
 **Run the pipeline** (starts at Step 3 — BAMs are already provided):
 
 ```bash
-bash scripts_oneoffs/malathion/malathion_pipeline.sh
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam \
+    --project     malathion \
+    --parfile     helpfiles/malathion/hap_params.R \
+    --design      helpfiles/malathion/design.txt \
+    --scan        malathion_smooth250 \
+    --founders    A \
+    --snp-table   pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-The script chains Steps 3–6 with SLURM dependencies and prints each job ID.
+This submits Steps 3–6 with SLURM dependency chaining and prints each job ID.
 When complete, download the results tarball and check for a signal on chr3R
 around 9 Mb. For biological interpretation see [Long et al. 2022](https://pubmed.ncbi.nlm.nih.gov/36250804/).
+
+This is exactly the kind of command an AI assistant can generate for your own
+experiment — point it at this README and your config files, and ask it to write
+the `run_full_pipeline.sh` invocation for your project.
 
 ---
 
@@ -767,62 +779,39 @@ need to align the new samples, then rerun from Step 3 with all BAMs combined.
 - `helpfiles/<project>/design.txt` updated: add rows for new samples
 - New scan name so you don't overwrite the 3-rep results
 
+**Step 1 — Align the new samples only:**
+
 ```bash
-#!/bin/bash
-set -e
-
-PROJECT=myproject
-PARFILE=helpfiles/${PROJECT}/hap_params.R
-DESIGN=helpfiles/${PROJECT}/design.txt
-SCAN=${PROJECT}_6rep_smooth250
-SNP_TABLE=pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz
-FOUNDERS=A1,A2,A3,A4,A5,A6,A7,AB8
-
-# Align NEW samples only
-NEW_BARCODES=helpfiles/${PROJECT}/${PROJECT}_batch2.barcodes.txt
+NEW_BARCODES=helpfiles/<project>/<project>_batch2.barcodes.txt
 NN=$(wc -l < ${NEW_BARCODES})
-jid_bam=$(sbatch --parsable --array=1-${NN} pipeline/scripts/fq2bam.sh \
-    ${NEW_BARCODES} data/raw/${PROJECT}_batch2 data/bam/${PROJECT})
+sbatch --array=1-${NN} pipeline/scripts/fq2bam.sh \
+    ${NEW_BARCODES} data/raw/<project>_batch2 data/bam/<project>
+```
 
-# Rebuild bam_list with old + new, rerun REFALT
-# Update helpfiles/${PROJECT}/bam_list.txt to include all sample BAMs (old + new)
-# then review and commit before submitting
+**Step 2 — Update your config files:**
 
-jid_refalt=$(sbatch --parsable --dependency=afterok:${jid_bam} \
-    pipeline/scripts/bam2bcf2REFALT.sh \
-    helpfiles/${PROJECT}/bam_list.txt process/${PROJECT})
+- Rebuild `helpfiles/<project>/bam_list.txt` to include all BAMs (old + new)
+- Update `hap_params.R`: add new sample names to `names_in_bam`
+- Update `design.txt`: add rows for new samples
 
-# Rerun haplotypes (hap_params.R must be updated with all sample names)
-jid_haps=$(sbatch --parsable --dependency=afterok:${jid_refalt} \
-    --array=1-5 pipeline/scripts/REFALT2haps.sh \
-    --parfile ${PARFILE} --dir process/${PROJECT})
+```bash
+git add helpfiles/<project>/
+git commit -m "add batch 2 samples to <project>"
+git push
+```
 
-# Scan
-scan_out=$(bash pipeline/scripts/run_scan.sh \
-    --design ${DESIGN} --dir process/${PROJECT} \
-    --scan ${SCAN} --after ${jid_haps})
-jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
+**Step 3 — Rerun from REFALT with a new scan name** (once alignment finishes):
 
-snp_out=$(bash pipeline/scripts/run_snp_scan.sh \
-    --design ${DESIGN} --dir process/${PROJECT} \
-    --scan ${SCAN} --snp-table ${SNP_TABLE} --founders ${FOUNDERS})
-jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
-
-# Figures
-SCAN_DIR=process/${PROJECT}/${SCAN}
-sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
-    -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
-    --wrap="module load R/4.2.2 && \
-Rscript pipeline/scripts/plot_5panel.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.wald.png --format powerpoint --threshold 10 && \
-Rscript pipeline/scripts/plot_H2_overlay.R \
-    --scan ${SCAN_DIR}/${SCAN}.scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.H2.png --format powerpoint && \
-Rscript pipeline/scripts/plot_freqsmooth_snp.R \
-    --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt \
-    --out  ${SCAN_DIR}/${SCAN}.snp.wald.png --format powerpoint --threshold 10 && \
-cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam \
+    --project      <project> \
+    --parfile      helpfiles/<project>/hap_params.R \
+    --design       helpfiles/<project>/design.txt \
+    --scan         <project>_6rep_smooth250 \
+    --founders     A \
+    --snp-table    pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
 Steps 3–4 must rerun with **all** BAMs because SNP calling and haplotype
