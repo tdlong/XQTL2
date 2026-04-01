@@ -1,7 +1,7 @@
 ###############################################################################
 # plot_freqsmooth_H2.R  —  source this file, do not edit it
 #
-# Parallel to plot_pseudoscan.R but for heritability columns (Falc_H2, Cutl_H2)
+# Parallel to plot_5panel.R but for heritability columns (Falc_H2, Cutl_H2)
 # produced by the freqsmooth pipeline.  Source this after setting:
 #
 # Required:

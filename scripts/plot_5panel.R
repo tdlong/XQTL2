@@ -1,15 +1,15 @@
 #!/usr/bin/env Rscript
 ###############################################################################
-# plot_pseudoscan.R — 5-panel line plot from haplotype scan
+# plot_5panel.R — 5-panel line plot from haplotype scan
 #
 # Usage:
-#   Rscript scripts/plot_pseudoscan.R \
+#   Rscript scripts/plot_5panel.R \
 #       --scan  process/proj/SCAN/SCAN.scan.txt \
 #       --out   process/proj/SCAN/wald.png \
 #       --format powerpoint
 #
 # Multi-scan overlay:
-#   Rscript scripts/plot_pseudoscan.R \
+#   Rscript scripts/plot_5panel.R \
 #       --scan process/proj/SCAN_M/SCAN_M.scan.txt \
 #       --scan process/proj/SCAN_F/SCAN_F.scan.txt \
 #       --label Male --label Female \

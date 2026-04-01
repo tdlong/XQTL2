@@ -21,7 +21,7 @@ a companion package for interactive graphical analysis of scan results.
 5. Scan
    - 5a. Haplotype scan (`run_scan.sh` — smooth, Wald test, H², concat)
    - 5b. SNP scan (`run_snp_scan.sh` — optional, imputed SNP-level test)
-6. Generate figures (`plot_pseudoscan.R`, `plot_H2_overlay.R`, `plot_freqsmooth_snp.R`)
+6. Generate figures (`plot_5panel.R`, `plot_manhattan.R`, `plot_H2_overlay.R`, `plot_freqsmooth_snp.R`)
 7. Download results
 
 **What's already in this repo:**
@@ -120,6 +120,17 @@ All your submission scripts call `pipeline/scripts/run_scan.sh` etc. When
 XQTL2 is updated, run `git pull` inside the `/path/to/XQTL2` directory — your
 scripts automatically use the new version via the symlink.
 
+### Use git throughout your project
+
+Your project repo tracks everything needed to reproduce an experiment:
+barcode files, BAM lists, haplotype parameters, design files, and submission
+scripts. Raw reads and large output files (BAMs, scans) are gitignored, but
+as long as the raw FASTQs are backed up, every result can be regenerated from
+the tracked config files. Commit early and often — after creating each config
+file, after updating a design, after a successful run. A good habit is to
+commit before every `sbatch` submission so you have a record of exactly what
+was run.
+
 ---
 
 ### SLURM resource requirements
@@ -203,8 +214,7 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 Create `helpfiles/<project>/bam_list.txt` — one BAM path per line, sample BAMs
 first, then founders. Build a draft from your BAM directory, append founders,
-then **review it** before submitting. This file is the record of what went into
-your analysis; commit it.
+then **review it** before submitting.
 
 First, check which founders are available:
 
@@ -235,21 +245,18 @@ reference genotype, treat that strain as an additional founder and include its
 BAM in the list alongside the population founders.
 
 ```bash
-# 1. Draft from your sample BAMs
+# Draft from your sample BAMs
 ls data/bam/<project>/*.bam > helpfiles/<project>/bam_list.txt
 
-# 2. Append the founders that match your experiment
+# Append the founders that match your experiment
 cat pipeline/helpfiles/A_founders.bams.txt >> helpfiles/<project>/bam_list.txt
 
-# 3. Review — confirm every sample and every founder is present, no extras
+# Review — confirm every sample and every founder is present, no extras
 cat helpfiles/<project>/bam_list.txt
-
-# 4. Commit
-git add helpfiles/<project>/bam_list.txt && git commit -m "add bam list for <project>"
 ```
 
 ```bash
-# 5. Submit
+# Submit
 mkdir -p process/<project>
 sbatch --array=1-5 pipeline/scripts/bam2bcf2REFALT.sh \
     helpfiles/<project>/bam_list.txt \
@@ -462,7 +469,7 @@ submitted via `--wrap` in the worked example scripts, or run interactively.
 ### Haplotype Wald scan
 
 ```bash
-Rscript pipeline/scripts/plot_pseudoscan.R \
+Rscript pipeline/scripts/plot_5panel.R \
     --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
     --out    process/<project>/<scan_name>/<scan_name>.wald.png \
     --format powerpoint \
@@ -472,13 +479,27 @@ Rscript pipeline/scripts/plot_pseudoscan.R \
 Overlay two scans (e.g. male vs female):
 
 ```bash
-Rscript pipeline/scripts/plot_pseudoscan.R \
+Rscript pipeline/scripts/plot_5panel.R \
     --scan   process/<project>/<scan_M>/<scan_M>.scan.txt \
     --scan   process/<project>/<scan_F>/<scan_F>.scan.txt \
     --label  Male --label Female \
     --colour "#1F78B4" --colour "#E31A1C" \
     --out    process/<project>/MF_overlay.png \
     --format powerpoint --threshold 10
+```
+
+### Manhattan plot (single-row)
+
+A traditional Manhattan with all chromosomes concatenated on one x-axis.
+Heterochromatic regions are shaded and chromosome boundaries marked with
+dotted vertical lines. Same interface as `plot_5panel.R`:
+
+```bash
+Rscript pipeline/scripts/plot_manhattan.R \
+    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/<scan_name>/<scan_name>.manhattan.png \
+    --format powerpoint \
+    --threshold 10
 ```
 
 ### Heritability overlay (Falconer + Cutler)
@@ -511,7 +532,7 @@ Rscript pipeline/scripts/plot_freqsmooth_snp.R \
 | `--peaks <file>` | Tab-delimited peak annotations (`label`, `chr`, `pos_mb`) |
 | `--height <in>` | Override figure height in inches |
 
-`plot_pseudoscan.R` and `plot_freqsmooth_snp.R` also accept `--label` and
+`plot_5panel.R` and `plot_freqsmooth_snp.R` also accept `--label` and
 `--colour` (one per `--scan`) for overlays.
 
 ### FORMAT presets
@@ -679,7 +700,7 @@ SCAN_DIR=process/${PROJECT}/${SCAN}
 sbatch --dependency=afterok:${jid_hap},afterok:${jid_snp} \
     -A tdlong_lab -p standard --cpus-per-task=1 --mem-per-cpu=3G --time=1:00:00 \
     --wrap="module load R/4.2.2 && \
-Rscript pipeline/scripts/plot_pseudoscan.R \
+Rscript pipeline/scripts/plot_5panel.R \
     --scan ${SCAN_DIR}/${SCAN}.scan.txt \
     --out  ${SCAN_DIR}/${SCAN}.wald.png --format powerpoint --threshold 10 && \
 Rscript pipeline/scripts/plot_H2_overlay.R \
