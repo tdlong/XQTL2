@@ -13,9 +13,9 @@
 
 set -e
 
-MEM_PER_CPU=3G
+MEM_PER_CPU=10G
 CPUS_PER_TASK=1
-PARTITION=standard
+PARTITION=highmem
 ACCOUNT=tdlong_lab
 
 while [[ $# -gt 0 ]]; do

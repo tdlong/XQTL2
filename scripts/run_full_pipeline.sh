@@ -130,7 +130,7 @@ if [[ "$SKIP_HAPS" == false ]]; then
     jid_haps=$(bash "${PIPELINE_DIR}/run_haps.sh" \
         --parfile "${PARFILE}" --dir "${PROCESSDIR}" \
         ${AFTER_HAPS_FLAG} \
-        --mem-per-cpu "${MEM_PER_CPU}" -p "${PARTITION}" -A "${ACCOUNT}")
+        -A "${ACCOUNT}")
     echo "haplotypes: ${jid_haps}"
 else
     jid_haps="${AFTER_HAPS}"
