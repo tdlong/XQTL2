@@ -147,6 +147,13 @@ average_error_matrices = function(err_list){
         }
 
 df = lazy_dt(read.table(filein,header=TRUE))
+
+# Derive pool names from RefAlt column names rather than requiring them in params
+names_in_bam <- setdiff(
+    sub("^REF_", "", grep("^REF_", names(df), value=TRUE)),
+    founders)
+cat(sprintf("Found %d pools in RefAlt file\n", length(names_in_bam)))
+
 df2 = df %>%
 	pivot_longer(c(-CHROM,-POS), names_to = "lab", values_to = "count") %>%
 	mutate(RefAlt = str_sub(lab,1,3)) %>%
