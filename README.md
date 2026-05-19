@@ -759,36 +759,25 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-To run two scans from the same haplotypes (e.g. male and female), run
-the first call starting at the haplotype step, then the second starting
-at the scan step:
+To run two scans from the same haplotypes (e.g. male and female):
 
 ```bash
-# Haplotypes + female scan
-bash pipeline/scripts/run_full_pipeline.sh \
+# Step 1 — haplotypes + female scan.  Output includes a "haplotypes: <jid>" line.
+JID=$(bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_F.txt --scan heatshock_F \
     --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8 \
+    | tee /dev/stderr | grep "^haplotypes:" | awk '{print $2}')
 
-# Male scan only — haplotypes from above
+# Step 2 — male scan, waits for the same haplotype job
 bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam --skip-refalt --skip-haps \
+    --skip-fq2bam --skip-refalt --skip-haps --after ${JID} \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_M.txt --scan heatshock_M \
     --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
-```
-
-If you want the male scan to wait explicitly for the haplotype job from
-the female run, note the job ID printed on the `haplotypes:` line and
-add `--after <jid>`:
-
-```bash
-bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam --skip-refalt --skip-haps --after 12345 \
-    ...
 ```
 
 All SLURM flags (`--mem-per-cpu`, `-p`, `-A`) are passed through to every job.
