@@ -7,12 +7,12 @@
 #SBATCH --time=1:00:00
 
 # Run from your project directory:
-#   sbatch pipeline/scripts/temp/smooth_r2_diag.sh \
-#       --hapsdir  process/ZINC2 \
+#   sbatch pipeline/scripts/smooth_r2_diag.sh \
+#       --hapsdir   process/ZINC2 \
 #       --smoothdir process/ZINC2/ZINC2_F_v3 \
-#       --scan     ZINC2_F_v3 \
-#       --rfile    helpfiles/ZINC2/design.txt \
-#       --out      process/ZINC2/ZINC2_F_v3/smooth_r2_diag.txt
+#       --scan      ZINC2_F_v3 \
+#       --rfile     helpfiles/ZINC2/Zinc2.test.F.N13.txt \
+#       --out       process/ZINC2/ZINC2_F_v3/smooth_r2_diag.txt
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -29,7 +29,7 @@ done
 
 module load R/4.2.2
 
-Rscript "$(dirname $(readlink -f $0))/smooth_r2_diag.R" \
+Rscript pipeline/scripts/smooth_r2_diag.R \
     --hapsdir   "${HAPSDIR}"   \
     --smoothdir "${SMOOTHDIR}" \
     --scan      "${SCAN}"      \
