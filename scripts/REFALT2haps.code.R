@@ -122,7 +122,8 @@ est_hap2 = function(sampdf){
         out = lsei(A=m_founder_mat,B=Y, E=t(matrix(rep(1,d))),F=1,G=diag(d),H=matrix(rep(0.0003,d)),verbose=TRUE,fulloutput=TRUE)
         Haps = out$X
         Err = out$cov
-        # Discard window if lsei failed to satisfy its own constraints
+        # lsei convergence failure: solution violates its own constraints.
+        # Set to NA so smooth_haps.R gap-fills from neighbouring valid windows.
         if (any(Haps < 0) || any(Haps > 1) || abs(sum(Haps) - 1) > 0.01) {
             Haps[] <- NA_real_
         }
