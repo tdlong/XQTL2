@@ -759,25 +759,22 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-To run two scans from the same haplotypes (e.g. male and female):
+To run two scans from the same haplotypes (e.g. male and female), use
+the atomic building blocks directly: `run_haps.sh` submits the haplotype
+job and prints its ID; `run_scan.sh` submits a scan conditioned on it:
 
 ```bash
-# Step 1 — haplotypes + female scan.  Output includes a "haplotypes: <jid>" line.
-JID=$(bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam --skip-refalt \
-    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
-    --design helpfiles/heatshock/design_F.txt --scan heatshock_F \
-    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8 \
-    | tee /dev/stderr | grep "^haplotypes:" | awk '{print $2}')
+JID=$(bash pipeline/scripts/run_haps.sh \
+    --parfile helpfiles/heatshock/hap_params.R \
+    --dir     process/heatshock)
 
-# Step 2 — male scan, waits for the same haplotype job
-bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam --skip-refalt --skip-haps --after ${JID} \
-    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
-    --design helpfiles/heatshock/design_M.txt --scan heatshock_M \
-    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+bash pipeline/scripts/run_scan.sh \
+    --after ${JID} --dir process/heatshock --scan heatshock_F \
+    --design helpfiles/heatshock/design_F.txt
+
+bash pipeline/scripts/run_scan.sh \
+    --after ${JID} --dir process/heatshock --scan heatshock_M \
+    --design helpfiles/heatshock/design_M.txt
 ```
 
 All SLURM flags (`--mem-per-cpu`, `-p`, `-A`) are passed through to every job.

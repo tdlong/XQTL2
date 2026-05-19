@@ -125,9 +125,12 @@ fi
 
 # ── Step 4: REFALT2haps ─────────────────────────────────────────────────────
 if [[ "$SKIP_HAPS" == false ]]; then
-    jid_haps=$(sbatch --parsable ${AFTER_REFALT} ${SLURM_COMMON} \
-        --array=1-5 "${PIPELINE_DIR}/REFALT2haps.sh" \
-        --parfile "${PARFILE}" --dir "${PROCESSDIR}")
+    AFTER_HAPS_FLAG=""
+    [[ -n "$AFTER_REFALT" ]] && AFTER_HAPS_FLAG="--after $(echo $AFTER_REFALT | grep -o '[0-9]*')"
+    jid_haps=$(bash "${PIPELINE_DIR}/run_haps.sh" \
+        --parfile "${PARFILE}" --dir "${PROCESSDIR}" \
+        ${AFTER_HAPS_FLAG} \
+        --mem-per-cpu "${MEM_PER_CPU}" -p "${PARTITION}" -A "${ACCOUNT}")
     echo "haplotypes: ${jid_haps}"
 else
     jid_haps="${AFTER_HAPS}"
