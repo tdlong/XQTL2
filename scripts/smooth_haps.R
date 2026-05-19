@@ -164,9 +164,15 @@ freq_raw <- xx1 %>%
 # where the founders ARE resolved.
 freq_raw <- freq_raw %>%
   group_by(CHROM, pos, pool, group) %>%
-  mutate(group_size = n()) %>%
+  mutate(group_size  = n(),
+         group_sum   = sum(freq, na.rm = TRUE),
+         group_rank  = rank(-freq, ties.method = "first")) %>%
   ungroup() %>%
-  mutate(freq = if_else(group_size > 1L, NA_real_, freq))
+  mutate(freq = case_when(
+    group_size == 1L  ~ freq,        # resolvable: keep individual estimate
+    group_rank == 1L  ~ group_sum,   # highest-freq member carries combined sum
+    TRUE              ~ NA_real_     # all others: NA for gap-filling
+  ))
 
 n_masked <- sum(is.na(freq_raw$freq))
 n_total  <- nrow(freq_raw)
@@ -189,7 +195,7 @@ freq_smoothed <- freq_raw %>%
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
   arrange(CHROM, pos) %>%
   mutate(freq = if_else(is.nan(freq), NA_real_, freq),
-         freq = pmax(freq, 0.0003, na.rm = TRUE)) %>%
+         freq = pmax(freq, 0.0003, na.rm = FALSE)) %>%
   group_by(TRT, REP, founder) %>%
   mutate(freq = fill_gaps(freq, smooth_half)) %>%
   mutate(freq = running_mean(freq, smooth_half)) %>%
