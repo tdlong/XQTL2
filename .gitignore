@@ -26,8 +26,9 @@ output/
 logs/
 configs/
 
-# temp folder inside scripts
+# temp folders for scratch files and local results
 scripts/temp/
+temp/
 
 # project-specific files — these belong in the user's project repo, not here
 scripts_oneoffs/
