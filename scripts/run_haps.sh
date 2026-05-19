@@ -41,4 +41,5 @@ sbatch --parsable ${DEP} \
     --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
     --time=4:00:00 --array=1-5 \
     "$(dirname $(readlink -f $0))/REFALT2haps.sh" \
-    --parfile "${PARFILE}" --dir "${DIR}"
+    --parfile "${PARFILE}" --dir "${DIR}" \
+    | cut -d_ -f1
