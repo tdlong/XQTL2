@@ -20,7 +20,10 @@
 #
 # Skip early steps if you already have BAMs or haplotypes:
 #       --skip-fq2bam         start at Step 3 (REFALT)
-#       --skip-refalt         start at Step 5 (scan) — haplotypes must exist
+#       --skip-refalt         skip REFALT creation; re-run haplotypes + scan
+#       --skip-haps           start at Step 5 (scan) — haplotypes must exist
+#       --after <jid>         make hap scan wait for this SLURM job (use with --skip-haps
+#                             to share one haplotype job across multiple scans)
 #
 # All SLURM flags (--mem-per-cpu, -p, -A, etc.) are passed through.
 ###############################################################################
@@ -34,6 +37,8 @@ PARTITION=standard
 ACCOUNT=tdlong_lab
 SKIP_FQ2BAM=false
 SKIP_REFALT=false
+SKIP_HAPS=false
+AFTER_HAPS=""
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -55,6 +60,8 @@ while [[ $# -gt 0 ]]; do
     -A|--account)    ACCOUNT="$2";       shift 2 ;;
     --skip-fq2bam)   SKIP_FQ2BAM=true;  shift ;;
     --skip-refalt)   SKIP_REFALT=true;   shift ;;
+    --skip-haps)     SKIP_HAPS=true;     shift ;;
+    --after)         AFTER_HAPS="$2";    shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -117,10 +124,15 @@ if [[ "$SKIP_REFALT" == false ]]; then
 fi
 
 # ── Step 4: REFALT2haps ─────────────────────────────────────────────────────
-jid_haps=$(sbatch --parsable ${AFTER_REFALT} ${SLURM_COMMON} \
-    --array=1-5 "${PIPELINE_DIR}/REFALT2haps.sh" \
-    --parfile "${PARFILE}" --dir "${PROCESSDIR}")
-echo "haplotypes: ${jid_haps}"
+if [[ "$SKIP_HAPS" == false ]]; then
+    jid_haps=$(sbatch --parsable ${AFTER_REFALT} ${SLURM_COMMON} \
+        --array=1-5 "${PIPELINE_DIR}/REFALT2haps.sh" \
+        --parfile "${PARFILE}" --dir "${PROCESSDIR}")
+    echo "haplotypes: ${jid_haps}"
+else
+    jid_haps="${AFTER_HAPS}"
+    echo "haplotypes: skipped (using ${jid_haps})"
+fi
 
 # ── Step 5a: haplotype scan ─────────────────────────────────────────────────
 scan_out=$(bash "${PIPELINE_DIR}/run_scan.sh" \

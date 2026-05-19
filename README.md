@@ -751,9 +751,32 @@ design (e.g. different contrasts or subsets of samples):
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam --skip-refalt \
+    --skip-fq2bam --skip-refalt --skip-haps \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_subset.txt --scan heatshock_subset \
+    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+```
+
+To run two scans from the same haplotypes (e.g. male and female) without
+calling the haplotype estimator twice, run the first scan normally and
+capture the haplotype job ID, then pass it to the second scan with
+`--skip-haps --after`:
+
+```bash
+# Run haplotypes + first scan; print the haplotype job ID
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam --skip-refalt \
+    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
+    --design helpfiles/heatshock/design_F.txt --scan heatshock_F \
+    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+
+# Note the "haplotypes: <jid>" line printed above, then run the second scan:
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam --skip-refalt --skip-haps --after <jid> \
+    --project heatshock --parfile helpfiles/heatshock/hap_params.R \
+    --design helpfiles/heatshock/design_M.txt --scan heatshock_M \
     --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
