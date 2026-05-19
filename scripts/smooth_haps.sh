@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-Rscript "$(dirname $(readlink -f $0))/smooth_haps.R" \
+Rscript pipeline/scripts/smooth_haps.R \
     --chr       "${mychr}"    \
     --dir       "${DIR}"      \
     --outdir    "${OUTDIR}"   \

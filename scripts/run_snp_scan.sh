@@ -64,7 +64,7 @@ DEP=""
 # ── SNP scan ─────────────────────────────────────────────────────────────────
 jid_snp=$(sbatch --parsable ${DEP} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
-    --array=1-5 "$(dirname $(readlink -f $0))/snp_scan.sh" \
+    --array=1-5 pipeline/scripts/snp_scan.sh \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
