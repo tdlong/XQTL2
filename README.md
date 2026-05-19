@@ -781,6 +781,16 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
+If you want the male scan to wait explicitly for the haplotype job from
+the female run, note the job ID printed on the `haplotypes:` line and
+add `--after <jid>`:
+
+```bash
+bash pipeline/scripts/run_full_pipeline.sh \
+    --skip-fq2bam --skip-refalt --skip-haps --after 12345 \
+    ...
+```
+
 All SLURM flags (`--mem-per-cpu`, `-p`, `-A`) are passed through to every job.
 
 ---
