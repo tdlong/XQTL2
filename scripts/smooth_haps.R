@@ -162,34 +162,44 @@ freq_raw <- xx1 %>%
 # constrained by the least-squares fit).  Set to NA so the interpolation +
 # smoothing pipeline below recovers sensible values from flanking windows
 # where the founders ARE resolved.
+#
+# The group sum IS known from lsei — save it so the constrained rescaling
+# step below can restore it after gap-filling.
 freq_raw <- freq_raw %>%
   group_by(CHROM, pos, pool, group) %>%
-  mutate(group_size  = n(),
-         group_sum   = sum(freq, na.rm = TRUE),
-         group_rank  = rank(-freq, ties.method = "first")) %>%
-  ungroup() %>%
-  mutate(freq = case_when(
-    group_size == 1L  ~ freq,        # resolvable: keep individual estimate
-    group_rank == 1L  ~ group_sum,   # highest-freq member carries combined sum
-    TRUE              ~ NA_real_     # all others: NA for gap-filling
-  ))
+  mutate(group_size = n(),
+         group_sum  = sum(freq, na.rm = TRUE)) %>%
+  ungroup()
+
+# Reference table: combined frequency per group at TRT/REP level
+group_info <- freq_raw %>%
+  filter(group_size > 1L) %>%
+  group_by(CHROM, pos, TRT, REP, founder) %>%
+  summarize(hclust_group = first(group),
+            group_sum    = mean(group_sum, na.rm = TRUE),
+            .groups      = "drop")
+
+freq_raw <- freq_raw %>%
+  mutate(freq = if_else(group_size > 1L, NA_real_, freq))
 
 n_masked <- sum(is.na(freq_raw$freq))
 n_total  <- nrow(freq_raw)
 cat(sprintf("  Masked %d / %d founder-window estimates (%.1f%%) as unresolvable\n",
             n_masked, n_total, 100 * n_masked / n_total))
 
-# Two-step frequency recovery (order matters — fill gaps THEN smooth):
+# Three-step frequency recovery (order matters):
 #
-#   1. fill_gaps() — for each founder's NA gaps, compute the mean of ~h
-#      resolved positions on each flank, then linearly interpolate across
-#      the gap.  Averaging h positions downweights the barely-resolved
-#      boundary values that just passed the hclust cutoff.
+#   1. fill_gaps() — for each founder's NA gaps, linearly interpolate from
+#      mean-anchored flanks.  pmax uses na.rm=FALSE so masked NAs reach
+#      fill_gaps intact rather than being floored to 0.0003 prematurely.
 #
-#   2. running_mean() — smooth the now-complete series with a +/- smooth_half
-#      window.  Because gaps are already filled, the smoother sees a continuous
-#      series and produces uniform-quality output everywhere.
-freq_smoothed <- freq_raw %>%
+#   2. Constrained rescaling — for founders that were in the same hclust
+#      group, their lsei-estimated combined frequency is known.  After
+#      fill_gaps gives individual interpolated values, rescale them so
+#      the group sum equals the original lsei combined.
+#
+#   3. running_mean() — smooth the rescaled series.
+freq_filled <- freq_raw %>%
   group_by(CHROM, pos, TRT, REP, founder) %>%
   summarize(freq = mean(freq, na.rm = TRUE),
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
@@ -198,6 +208,21 @@ freq_smoothed <- freq_raw %>%
          freq = pmax(freq, 0.0003, na.rm = FALSE)) %>%
   group_by(TRT, REP, founder) %>%
   mutate(freq = fill_gaps(freq, smooth_half)) %>%
+  ungroup() %>%
+  left_join(group_info, by = c("CHROM", "pos", "TRT", "REP", "founder"))
+
+# Rescale grouped founders so their sum matches the lsei combined estimate
+freq_grouped <- freq_filled %>%
+  filter(!is.na(hclust_group)) %>%
+  group_by(CHROM, pos, TRT, REP, hclust_group) %>%
+  mutate(freq = freq / sum(freq, na.rm = TRUE) * mean(group_sum, na.rm = TRUE)) %>%
+  ungroup()
+
+freq_smoothed <- bind_rows(
+    freq_filled %>% filter(is.na(hclust_group)),
+    freq_grouped) %>%
+  select(-hclust_group, -group_sum) %>%
+  group_by(TRT, REP, founder) %>%
   mutate(freq = running_mean(freq, smooth_half)) %>%
   ungroup()
 
