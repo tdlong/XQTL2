@@ -222,6 +222,7 @@ freq_smoothed <- bind_rows(
     freq_filled %>% filter(is.na(hclust_group)),
     freq_grouped) %>%
   select(-hclust_group, -group_sum) %>%
+  arrange(CHROM, pos) %>%
   group_by(TRT, REP, founder) %>%
   mutate(freq = running_mean(freq, smooth_half)) %>%
   ungroup()
