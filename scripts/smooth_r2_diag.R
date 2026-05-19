@@ -72,13 +72,14 @@ for (ci in seq_along(chrs)) {
   r2_all[[ci]] <- joined %>%
     group_by(chr = mychr, TRT, REP, founder) %>%
     summarise(
-      sd_raw = sd(freq_raw, na.rm = TRUE),
-      R2     = if (sd(freq_raw, na.rm = TRUE) > 0.02)
-                 cor(freq_raw, freq_smooth, use = "complete.obs")^2
-               else NA_real_,
-      slope  = if (sd(freq_raw, na.rm = TRUE) > 0.02)
-                 coef(lm(freq_smooth ~ freq_raw))[2]
-               else NA_real_,
+      mean_raw = mean(freq_raw, na.rm = TRUE),
+      sd_raw   = sd(freq_raw,   na.rm = TRUE),
+      R2       = if (mean(freq_raw, na.rm = TRUE) > 0.02)
+                   cor(freq_raw, freq_smooth, use = "complete.obs")^2
+                 else NA_real_,
+      slope    = if (mean(freq_raw, na.rm = TRUE) > 0.02)
+                   coef(lm(freq_smooth ~ freq_raw))[2]
+                 else NA_real_,
       .groups = "drop"
     )
 }
@@ -88,7 +89,7 @@ r2_table <- bind_rows(r2_all)
 n_total    <- nrow(r2_table)
 n_active   <- sum(!is.na(r2_table$R2))
 n_inactive <- n_total - n_active
-cat(sprintf("\n%d / %d founder×pool series excluded (sd_raw ≤ 0.02 — absent or invariant)\n",
+cat(sprintf("\n%d / %d founder×pool series excluded (mean_raw ≤ 0.02 — founder absent from region)\n",
             n_inactive, n_total))
 
 # ── Per-chromosome summary (active founders only) ─────────────────────────────
