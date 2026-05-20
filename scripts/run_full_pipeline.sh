@@ -81,7 +81,7 @@ PIPELINE_DIR="$(dirname "$(readlink -f "$0")")"
 PROCESSDIR="process/${PROJECT}"
 mkdir -p "${PROCESSDIR}"
 
-SLURM_COMMON="-A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU}"
+SLURM_COMMON="-A ${ACCOUNT}"
 
 echo "=== XQTL full pipeline: ${PROJECT} / ${SCAN} ==="
 echo ""

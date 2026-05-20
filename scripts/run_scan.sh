@@ -59,7 +59,7 @@ DEP_SMOOTH=""
 
 # ── smooth haplotype frequencies ─────────────────────────────────────────────
 jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
-    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
+    -A ${ACCOUNT} \
     --array=1-5 pipeline/scripts/smooth_haps.sh \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
@@ -69,7 +69,7 @@ echo "smooth:   $jid_smooth"
 
 # ── haplotype scan (Wald + H2) ───────────────────────────────────────────────
 jid_hap=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
-    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
+    -A ${ACCOUNT} \
     --array=1-5 pipeline/scripts/hap_scan.sh \
     --rfile  "${DESIGN}" \
     --dir    "${DIR}" \
