@@ -189,17 +189,15 @@ cat(sprintf("  Masked %d / %d founder-window estimates (%.1f%%) as unresolvable\
 
 # Three-step frequency recovery (order matters):
 #
-#   1. fill_gaps() — for each founder's NA gaps, linearly interpolate from
-#      mean-anchored flanks.  pmax uses na.rm=FALSE so masked NAs reach
-#      fill_gaps intact rather than being floored to 0.0003 prematurely.
+#   1. fill_gaps() — interpolate NA gaps from mean-anchored flanks.
+#      pmax uses na.rm=FALSE so masked NAs survive to fill_gaps.
 #
-#   2. Constrained rescaling — for founders that were in the same hclust
-#      group, their lsei-estimated combined frequency is known.  After
-#      fill_gaps gives individual interpolated values, rescale them so
-#      the group sum equals the original lsei combined.
+#   2. Constrained rescaling — rescale grouped founders in-place so
+#      their sum matches the original lsei combined (group_sum).
+#      Done as a single group_by mutate; solo founders are untouched.
 #
 #   3. running_mean() — smooth the rescaled series.
-freq_filled <- freq_raw %>%
+freq_smoothed <- freq_raw %>%
   group_by(CHROM, pos, TRT, REP, founder) %>%
   summarize(freq = mean(freq, na.rm = TRUE),
             Num  = mean(Num,  na.rm = TRUE), .groups = "drop") %>%
@@ -209,18 +207,13 @@ freq_filled <- freq_raw %>%
   group_by(TRT, REP, founder) %>%
   mutate(freq = fill_gaps(freq, smooth_half)) %>%
   ungroup() %>%
-  left_join(group_info, by = c("CHROM", "pos", "TRT", "REP", "founder"))
-
-# Rescale grouped founders so their sum matches the lsei combined estimate
-freq_grouped <- freq_filled %>%
-  filter(!is.na(hclust_group)) %>%
+  left_join(group_info, by = c("CHROM", "pos", "TRT", "REP", "founder")) %>%
   group_by(CHROM, pos, TRT, REP, hclust_group) %>%
-  mutate(freq = freq / sum(freq, na.rm = TRUE) * mean(group_sum, na.rm = TRUE)) %>%
-  ungroup()
-
-freq_smoothed <- bind_rows(
-    freq_filled %>% filter(is.na(hclust_group)),
-    freq_grouped) %>%
+  mutate(freq = if_else(
+    !is.na(hclust_group),
+    freq / sum(freq, na.rm = TRUE) * first(group_sum),
+    freq)) %>%
+  ungroup() %>%
   select(-hclust_group, -group_sum) %>%
   arrange(CHROM, pos) %>%
   group_by(TRT, REP, founder) %>%
