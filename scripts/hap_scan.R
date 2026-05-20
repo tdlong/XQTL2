@@ -20,6 +20,10 @@ suppressPackageStartupMessages({
 
 RIDGE_FRACTION <- 0.01
 AF_CUTOFF      <- 0.01
+# Smoothing deflation correction: R² between smoothed and raw haplotype
+# frequencies (from smooth_r2_diag.sh).  Dividing tstat by R² restores
+# calibration.  Value from ZINC2 v4 run; update if pipeline or data change.
+R2_SMOOTH      <- 0.937
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 args   <- commandArgs(trailingOnly = TRUE)
@@ -142,7 +146,7 @@ scan_list <- lapply(seq_len(W), function(w) {
 
   list(chr         = mychr,
        pos         = win_pos[w],
-       Wald_log10p = -log10(pchisq(tstat, df, lower.tail = FALSE)),
+       Wald_log10p = -log10(pchisq(tstat / R2_SMOOTH, df, lower.tail = FALSE)),
        Falc_H2     = h2$Falconer_H2,
        Cutl_H2     = h2$Cutler_H2)
 })
