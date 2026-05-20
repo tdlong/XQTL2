@@ -191,7 +191,8 @@ effective replicates, 4 samples). Larger experiments scale proportionally.
 | `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 5 days | bcftools mpileup, I/O-bound |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | large haplotype matrices require highmem |
 | `smooth_haps.sh` | 5a | highmem | 1 | 10G | 4 hr | covariance uncount(64) needs ~8G on large chromosomes |
-| `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall |
+| `smooth_r2_diag.sh` | 5a | standard | 1 | 4G | 30 min | R² calibration; runs between smooth and hap_scan |
+| `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall; reads R² from smooth_r2.txt |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
 | concat | 5a | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
 | snp_concat | 5b | standard | 1 | 3G | 1 hr | 413 MB / 21s wall |
@@ -447,7 +448,7 @@ bash pipeline/scripts/run_scan.sh \
 
 ### Option B — Step by step
 
-For reference or debugging, `run_scan.sh` internally chains these three jobs:
+For reference or debugging, `run_scan.sh` internally chains these four jobs:
 
 **1. Smooth haplotype frequencies** (5-task array, one chromosome per task):
 
@@ -459,8 +460,21 @@ sbatch --array=1-5 pipeline/scripts/smooth_haps.sh \
     --smooth-kb 250
 ```
 
-**2. Haplotype scan** — Wald test + heritability at each window (5-task array,
-after smooth step):
+**2. R² smoothing diagnostic** — computes the R² between smoothed and raw
+haplotype frequencies across all founders and pools, writes
+`<scan_name>.smooth_r2.txt` to the scan directory. The haplotype scan
+reads this file to apply the calibration correction automatically.
+
+```bash
+sbatch pipeline/scripts/smooth_r2_diag.sh \
+    --hapsdir   process/<project> \
+    --smoothdir process/<project>/<scan_name> \
+    --scan      <scan_name> \
+    --rfile     helpfiles/<project>/design.txt
+```
+
+**3. Haplotype scan** — Wald test + heritability at each window (5-task array,
+after smooth_r2_diag):
 
 ```bash
 sbatch --array=1-5 pipeline/scripts/hap_scan.sh \
