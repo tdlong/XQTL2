@@ -68,8 +68,19 @@ jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
     | cut -d_ -f1)
 echo "smooth:   $jid_smooth"
 
+# ── R² smoothing diagnostic (feeds correction into hap_scan) ─────────────────
+jid_r2=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
+    -A ${ACCOUNT} \
+    pipeline/scripts/smooth_r2_diag.sh \
+    --hapsdir   "${DIR}" \
+    --smoothdir "${OUTDIR}" \
+    --scan      "${SCAN}" \
+    --rfile     "${DESIGN}" \
+    | cut -d_ -f1)
+echo "smooth_r2: $jid_r2"
+
 # ── haplotype scan (Wald + H2) ───────────────────────────────────────────────
-jid_hap=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
+jid_hap=$(sbatch --parsable --dependency=afterok:${jid_r2} \
     -A ${ACCOUNT} \
     --array=1-5 pipeline/scripts/hap_scan.sh \
     --rfile  "${DESIGN}" \

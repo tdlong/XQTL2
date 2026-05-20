@@ -20,10 +20,6 @@ suppressPackageStartupMessages({
 
 RIDGE_FRACTION <- 0.01
 AF_CUTOFF      <- 0.01
-# Smoothing deflation correction: R² between smoothed and raw haplotype
-# frequencies (from smooth_r2_diag.sh).  Dividing tstat by R² restores
-# calibration.  Value from ZINC2 v4 run; update if pipeline or data change.
-R2_SMOOTH      <- 0.937
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 args   <- commandArgs(trailingOnly = TRUE)
@@ -46,6 +42,17 @@ source(file.path(script_dir, "scan_functions.R"))
 
 filein  <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout <- file.path(parsed$dir, paste0(parsed$outdir, ".scan.", mychr, ".txt"))
+
+# ── R² smoothing correction (written by smooth_r2_diag) ──────────────────────
+r2_file   <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth_r2.txt"))
+R2_SMOOTH <- if (file.exists(r2_file)) {
+  r2 <- as.numeric(readLines(r2_file))
+  cat(sprintf("Smoothing R²: %.4f  (correction factor: %.4f)\n", r2, 1/r2))
+  r2
+} else {
+  cat("No smooth_r2.txt found — applying no correction (R²=1)\n")
+  1.0
+}
 
 options(dplyr.summarise.inform = FALSE)
 

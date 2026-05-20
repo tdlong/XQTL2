@@ -109,10 +109,11 @@ print(chr_summary %>% mutate(across(where(is.numeric), ~round(.x, 3))), n = Inf)
 overall_r2 <- mean(r2_table$R2, na.rm = TRUE)
 cat(sprintf("\nOverall mean R²:   %.3f\n", overall_r2))
 cat(sprintf("Correction factor: %.3f  (= 1 / mean R²)\n", 1 / overall_r2))
-cat(sprintf("\nIn hap_scan.R, replace:\n"))
-cat(sprintf("  -log10(pchisq(tstat, df, lower.tail=FALSE))\n"))
-cat(sprintf("with:\n"))
-cat(sprintf("  -log10(pchisq(tstat / %.3f, df, lower.tail=FALSE))\n", overall_r2))
+
+# Write R² to file for hap_scan.R to read automatically
+r2_file <- file.path(parsed$smoothdir, paste0(parsed$scan, ".smooth_r2.txt"))
+writeLines(as.character(overall_r2), r2_file)
+cat(sprintf("R² written to %s\n", r2_file))
 
 # ── Full table ────────────────────────────────────────────────────────────────
 cat("\n── R² per chromosome × TRT × REP × founder ──────────────────────────\n")
