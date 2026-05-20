@@ -64,7 +64,8 @@ jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
-    --smooth-kb "${SMOOTH_KB}")
+    --smooth-kb "${SMOOTH_KB}" \
+    | cut -d_ -f1)
 echo "smooth:   $jid_smooth"
 
 # ── haplotype scan (Wald + H2) ───────────────────────────────────────────────
