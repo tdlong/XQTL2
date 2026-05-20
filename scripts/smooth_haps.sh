@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=smooth_haps
 #SBATCH -A tdlong_lab
-#SBATCH -p standard
+#SBATCH -p highmem
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=6G
+#SBATCH --mem-per-cpu=10G
 #SBATCH --time=4:00:00
 #SBATCH --array=1-5
 
