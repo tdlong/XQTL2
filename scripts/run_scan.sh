@@ -91,7 +91,7 @@ echo "hap_scan: $jid_hap"
 # ── concat chromosomes ───────────────────────────────────────────────────────
 jid_concat=$(sbatch --parsable --dependency=afterok:${jid_hap} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} --time=1:00:00 \
-    --wrap="bash $(readlink -f $(dirname $0))/concat_scans.sh ${OUTDIR}")
+    --wrap="bash pipeline/scripts/concat_scans.sh ${OUTDIR}")
 echo "concat:   $jid_concat"
 
 echo "done:     ${jid_concat}"

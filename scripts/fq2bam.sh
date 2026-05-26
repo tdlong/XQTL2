@@ -11,7 +11,7 @@ module load samtools/1.10
 module load bcftools/1.21
 module load picard-tools/3.3.0
 
-ref="$(dirname $(readlink -f $0))/../ref/dm6.fa"
+ref="pipeline/ref/dm6.fa"
 # from command line = Barcode A, Barcode B, sample name
 files=$1
 # this is the path to the raw data

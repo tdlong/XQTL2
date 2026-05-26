@@ -77,7 +77,6 @@ if [[ -n "$missing" ]]; then
     exit 1
 fi
 
-PIPELINE_DIR="$(dirname "$(readlink -f "$0")")"
 PROCESSDIR="process/${PROJECT}"
 mkdir -p "${PROCESSDIR}"
 
@@ -96,7 +95,7 @@ if [[ "$SKIP_FQ2BAM" == false ]]; then
 
     NN=$(wc -l < "${BARCODES}")
     jid_bam=$(sbatch --parsable ${SLURM_COMMON} \
-        --array=1-${NN} "${PIPELINE_DIR}/fq2bam.sh" \
+        --array=1-${NN} "pipeline/scripts/fq2bam.sh" \
         "${BARCODES}" "${RAWDIR}" "${BAMDIR}")
     echo "fq2bam:     ${jid_bam}  (${NN} samples)"
     AFTER_BAM="--dependency=afterok:${jid_bam}"
@@ -112,12 +111,12 @@ if [[ "$SKIP_REFALT" == false ]]; then
         [[ -z "$FOUNDERS" ]]  && { echo "Error: --founders (A or B) required to build bam_list" >&2; exit 1; }
         mkdir -p "helpfiles/${PROJECT}"
         ls "${BAMDIR}"/*.bam > "${BAMLIST}"
-        cat "${PIPELINE_DIR}/../helpfiles/${FOUNDERS}_founders.bams.txt" >> "${BAMLIST}"
+        cat "pipeline/helpfiles/${FOUNDERS}_founders.bams.txt" >> "${BAMLIST}"
         echo "Built ${BAMLIST} — review before results are final"
     fi
 
     jid_refalt=$(sbatch --parsable ${AFTER_BAM} ${SLURM_COMMON} \
-        --array=1-5 "${PIPELINE_DIR}/bam2bcf2REFALT.sh" \
+        --array=1-5 "pipeline/scripts/bam2bcf2REFALT.sh" \
         "${BAMLIST}" "${PROCESSDIR}")
     echo "REFALT:     ${jid_refalt}"
     AFTER_REFALT="--dependency=afterok:${jid_refalt}"
@@ -127,7 +126,7 @@ fi
 if [[ "$SKIP_HAPS" == false ]]; then
     AFTER_HAPS_FLAG=""
     [[ -n "$AFTER_REFALT" ]] && AFTER_HAPS_FLAG="--after $(echo $AFTER_REFALT | grep -o '[0-9]*')"
-    jid_haps=$(bash "${PIPELINE_DIR}/run_haps.sh" \
+    jid_haps=$(bash pipeline/scripts/run_haps.sh \
         --parfile "${PARFILE}" --dir "${PROCESSDIR}" \
         ${AFTER_HAPS_FLAG} \
         -A "${ACCOUNT}")
@@ -138,7 +137,7 @@ else
 fi
 
 # ── Step 5a: haplotype scan ─────────────────────────────────────────────────
-scan_out=$(bash "${PIPELINE_DIR}/run_scan.sh" \
+scan_out=$(bash pipeline/scripts/run_scan.sh \
     --design "${DESIGN}" --dir "${PROCESSDIR}" --scan "${SCAN}" \
     --smooth "${SMOOTH_KB}" --mem-per-cpu "${MEM_PER_CPU}" \
     --cpus-per-task "${CPUS_PER_TASK}" -p "${PARTITION}" -A "${ACCOUNT}" \
@@ -149,7 +148,7 @@ echo "$scan_out" | sed 's/^/  /'
 # ── Step 5b: SNP scan (if snp-table provided) ──────────────────────────────
 jid_snp=""
 if [[ -n "$SNP_TABLE" && -n "$FOUNDER_LIST" ]]; then
-    snp_out=$(bash "${PIPELINE_DIR}/run_snp_scan.sh" \
+    snp_out=$(bash pipeline/scripts/run_snp_scan.sh \
         --design "${DESIGN}" --dir "${PROCESSDIR}" --scan "${SCAN}" \
         --snp-table "${SNP_TABLE}" --founders "${FOUNDER_LIST}" \
         --mem-per-cpu "${MEM_PER_CPU}" --cpus-per-task "${CPUS_PER_TASK}" \
@@ -166,12 +165,12 @@ FIG_DEPS="--dependency=afterok:${jid_hap}"
 
 # Build the figure commands
 FIG_CMD="module load R/4.2.2"
-FIG_CMD="${FIG_CMD} && Rscript ${PIPELINE_DIR}/plot_5panel.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.wald.png --format powerpoint --threshold 10"
-FIG_CMD="${FIG_CMD} && Rscript ${PIPELINE_DIR}/plot_manhattan.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.manhattan.png --format powerpoint --threshold 10"
-FIG_CMD="${FIG_CMD} && Rscript ${PIPELINE_DIR}/plot_H2_overlay.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.H2.png --format powerpoint"
+FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_5panel.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.wald.png --format powerpoint --threshold 10"
+FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_manhattan.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.manhattan.png --format powerpoint --threshold 10"
+FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_H2_overlay.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.H2.png --format powerpoint"
 
 if [[ -n "$SNP_TABLE" ]]; then
-    FIG_CMD="${FIG_CMD} && Rscript ${PIPELINE_DIR}/plot_freqsmooth_snp.R --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt --out ${SCAN_DIR}/${SCAN}.snp.wald.png --format powerpoint --threshold 10"
+    FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_freqsmooth_snp.R --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt --out ${SCAN_DIR}/${SCAN}.snp.wald.png --format powerpoint --threshold 10"
 fi
 
 FIG_CMD="${FIG_CMD} && cd ${SCAN_DIR} && tar -czf ${SCAN}.tar.gz *.txt *.png"

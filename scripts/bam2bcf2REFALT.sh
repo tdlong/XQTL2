@@ -9,7 +9,7 @@
 
 module load bcftools/1.21
 
-ref="$(dirname $(readlink -f $0))/../ref/dm6.fa"
+ref="pipeline/ref/dm6.fa"
 # passed from command line
 bams=$1
 output=$2
