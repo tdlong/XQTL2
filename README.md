@@ -997,3 +997,47 @@ To check what exists for a project on the cluster:
 ```bash
 bash pipeline/scripts/show_project_layout.sh <project>
 ```
+
+---
+
+## Appendix — Proposed tiled SNP caller (under validation)
+
+> **Status: candidate, not yet adopted.** The validated Step 3 caller is
+> `bam2bcf2REFALT.sh` / `run_refalt.sh` and is unchanged. The scripts below are a
+> proposed drop-in replacement that must be proven byte-identical before it
+> replaces the current caller. Nothing in the normal pipeline calls them.
+
+`bam2bcf2REFALT.sh` calls SNPs one array task per chromosome. `bcftools` is
+single-threaded, so on large datasets each chromosome runs for days. The
+proposal scatters calling across ~5 Mb genome tiles (~29 array tasks for dm6),
+cutting per-task wall-clock by roughly the number of tiles per chromosome.
+
+Each tile is called on a slightly **padded** region and its output trimmed to a
+non-overlapping **core** (`make_tiles.sh`), so a boundary SNP still sees full
+read/realignment context yet appears in exactly one tile. Cores tile each
+chromosome with no gaps or overlap, so reassembly (`reassemble_refalt.sh`) is a
+plain concatenation into the same `RefAlt.<chr>.txt` format — downstream is
+untouched.
+
+Scripts: `make_tiles.sh` (tiling), `bam2bcf2REFALT.tiled.sh` (scatter caller),
+`reassemble_refalt.sh` (gather), `run_refalt.tiled.sh` (wrapper),
+`compare_refalt.sh` (validation).
+
+**Validation recipe** — run the candidate into a *separate* directory and diff
+against a validated run of the current caller:
+
+```bash
+# candidate caller → its own directory (does not touch the validated output)
+JID=$(bash pipeline/scripts/run_refalt.tiled.sh \
+        --bamlist helpfiles/<project>/bam_list.txt \
+        --dir     process/<project>_tiled)
+
+# once both runs finish, compare — expect IDENTICAL on every chromosome
+bash pipeline/scripts/compare_refalt.sh \
+        process/<project>          \
+        process/<project>_tiled
+```
+
+If every chromosome reports `IDENTICAL`, the candidate is equivalent and can be
+promoted to replace `bam2bcf2REFALT.sh` / `run_refalt.sh`. Tune the tiling with
+`--window` / `--pad`.
