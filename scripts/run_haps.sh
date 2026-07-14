@@ -17,6 +17,7 @@ MEM_PER_CPU=10G
 CPUS_PER_TASK=1
 PARTITION=highmem
 ACCOUNT=tdlong_lab
+TIME=1-00:00:00     # matches REFALT2haps.sh's own header; large chromosomes (chr3R) exceed 4h
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
     --dir)          DIR="$2";           shift 2 ;;
     --after)        AFTER="$2";         shift 2 ;;
     --mem-per-cpu)  MEM_PER_CPU="$2";   shift 2 ;;
+    --time)         TIME="$2";          shift 2 ;;
     -p|--partition) PARTITION="$2";     shift 2 ;;
     -A|--account)   ACCOUNT="$2";       shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -39,7 +41,7 @@ DEP=""
 sbatch --parsable ${DEP} \
     -A ${ACCOUNT} -p ${PARTITION} \
     --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
-    --time=4:00:00 --array=1-5 \
+    --time=${TIME} --array=1-5 \
     pipeline/scripts/REFALT2haps.sh \
     --parfile "${PARFILE}" --dir "${DIR}" \
     | cut -d_ -f1
