@@ -1095,6 +1095,55 @@ Scripts: `catalog_build.sh` (founder catalog), `catalog_count.sh` (per-sample
 counting array), `catalog_merge.R` (→ `RefAlt.<chr>.txt`),
 `run_refalt.catalog.sh` (wrapper), `compare_refalt_calls.R` (evaluation).
 
+### Running it, day to day
+
+There is **one command**, run from your project repo (the `process/` output and
+the `helpfiles/<project>/` config live in the project repo; only the scripts,
+reached through the `pipeline` symlink, live in XQTL2):
+
+```bash
+bash pipeline/scripts/run_refalt.catalog.sh \
+    --bamlist helpfiles/<project>/bam_list.txt \
+    --parfile helpfiles/<project>/hap_params.R \
+    --dir     process/<project>_catalog
+```
+
+You run this **same command every time**. What it does depends only on what is
+already in `--dir`: no catalog yet → it builds one from the founders; catalog
+present → it reuses it (founders not recalled); a sample already counted → it is
+skipped; a new sample → it is counted. Then it always re-merges `RefAlt.<chr>.txt`.
+
+**First run** — say 8 founders + 12 samples in `bam_list.txt`. It builds the
+catalog, counts all 20 BAMs, merges:
+
+```
+process/<project>_catalog/
+├── catalog.tsv.gz                     built once from the 8 founders
+├── counts/  B1.tsv.gz … AB8.tsv.gz    (8 founders)
+│            s01.tsv.gz … s12.tsv.gz   (12 samples)
+└── RefAlt.chrX.txt … RefAlt.chr3R.txt the deliverable
+```
+
+**Adding samples later** — append the new BAM paths to the *same*
+`bam_list.txt`, and rerun the *same command*. The catalog exists, so the build is
+skipped and the founders are untouched; the 20 existing counts skip themselves;
+only the new BAMs are counted; `RefAlt.<chr>.txt` is regenerated wider. Adding 4
+samples costs 4 count jobs, not a recall of anything — the reason the pipeline is
+structured this way.
+
+Then run haplotypes and the scan exactly as in Steps 4–5, pointed at the same
+`--dir`:
+
+```bash
+JID=$(bash pipeline/scripts/run_refalt.catalog.sh --bamlist … --parfile … --dir process/<project>_catalog)
+bash pipeline/scripts/run_haps.sh --after $JID --parfile helpfiles/<project>/hap_params.R --dir process/<project>_catalog
+```
+
+*Optimization (ignore until it matters):* many projects on the same population
+founders can skip even the per-project build by passing a shipped catalog with
+`--catalog pipeline/helpfiles/catalog_<pop>.tsv.gz` (built once with
+`catalog_build.sh --founders pipeline/helpfiles/<pop>_founders.bams.txt`).
+
 ### The test
 
 The candidate is evaluated **against the current pipeline on the same project**,

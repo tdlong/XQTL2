@@ -22,49 +22,57 @@
 #      among founders (at least one REF-fixed and one ALT-fixed founder).
 #   4. Emit catalog.tsv.gz (CHROM POS REF ALT), tabix-indexed, for mpileup -T.
 #
-# SNPs are catalogued genome-wide — heterochromatin is NOT censored here ("you
-# never know"). Region masking, if wanted, is a downstream choice.
+# The fixation thresholds match the current pipeline's downstream good_SNPs step
+# (REFALT2haps.code.R): near-fixed = ALT freq <= 0.03 or >= 0.97. The depth floor
+# is stricter and explicit: every founder must have >= --min-dp (default 20x)
+# reads, vs good_SNPs's any-depth. SNPs are catalogued genome-wide —
+# heterochromatin is NOT censored ("you never know").
 #
-# The founder set is defined ONCE, per project, in hap_params.R's `founders`
-# vector (population founders A1-A7,AB8 or AB8,B1-B7, PLUS any tester strain
-# crossed into the design). This script reads those names from --parfile and
-# resolves each to a BAM by matching the SM read-group tag of the BAMs in
-# --bamlist (the same project bam_list.txt the count step uses). No separate
-# hand-maintained founder list.
+# TWO WAYS to specify founders:
+#   (a) project    : --parfile hap_params.R --bamlist bam_list.txt
+#                    Founder NAMES come from the config's `founders` vector
+#                    (population founders + any tester strain); each is resolved
+#                    to a BAM in bam_list by SM read-group tag. Use this per
+#                    project (handles tester-strain designs).
+#   (b) shared/direct: --founders <founder_bams.txt>
+#                    Every BAM in the file is a founder (no name resolution). Use
+#                    this to build the shared A-pop / B-pop catalogs once, e.g.
+#                    from pipeline/helpfiles/{A,B}_founders.bams.txt.
 #
 # Usage:
 #   sbatch catalog_build.sh --parfile helpfiles/<project>/hap_params.R \
 #                           --bamlist helpfiles/<project>/bam_list.txt \
 #                           --dir     process/<project>_catalog
+#   sbatch catalog_build.sh --founders pipeline/helpfiles/B_founders.bams.txt \
+#                           --dir     process/catalog_Bpop
 #
-# Options (defaults): --min-dp 10  --maxaf 0.05  --snpgap 5 (0 disables)
+# Options (defaults): --min-dp 20  --maxaf 0.03  --snpgap 5 (0 disables)
 #                     --ref pipeline/ref/dm6.fa
 
 set -euo pipefail
 
 REF=pipeline/ref/dm6.fa
-MIN_DP=10
-MAXAF=0.05
+MIN_DP=20
+MAXAF=0.03
 SNPGAP=5
 THREADS=8
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --parfile)  PARFILE="$2";  shift 2 ;;
-    --bamlist)  BAMLIST="$2";  shift 2 ;;
-    --dir)      DIR="$2";      shift 2 ;;
-    --ref)      REF="$2";      shift 2 ;;
-    --min-dp)   MIN_DP="$2";   shift 2 ;;
-    --maxaf)    MAXAF="$2";    shift 2 ;;
-    --snpgap)   SNPGAP="$2";   shift 2 ;;
-    --threads)  THREADS="$2";  shift 2 ;;
+    --parfile)      PARFILE="$2";       shift 2 ;;
+    --bamlist)      BAMLIST="$2";       shift 2 ;;
+    --founders)     FOUNDER_BAMS="$2";  shift 2 ;;
+    --dir)          DIR="$2";           shift 2 ;;
+    --ref)          REF="$2";           shift 2 ;;
+    --min-dp)       MIN_DP="$2";        shift 2 ;;
+    --maxaf)        MAXAF="$2";         shift 2 ;;
+    --snpgap)       SNPGAP="$2";        shift 2 ;;
+    --threads)      THREADS="$2";       shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-[[ -z "${PARFILE:-}" ]] && { echo "Error: --parfile required" >&2; exit 1; }
-[[ -z "${BAMLIST:-}" ]] && { echo "Error: --bamlist required" >&2; exit 1; }
-[[ -z "${DIR:-}" ]]     && { echo "Error: --dir required" >&2; exit 1; }
+[[ -z "${DIR:-}" ]] && { echo "Error: --dir required" >&2; exit 1; }
 
 module load bcftools/1.21
 module load samtools/1.10
@@ -81,25 +89,31 @@ if [[ -s "$cat" && "${FORCE:-0}" != "1" ]]; then
   exit 0
 fi
 
-# Founder names, straight from the project config (hap_params.R `founders`).
-founders=$(grep -E '^[[:space:]]*founders' "$PARFILE" | grep -oE '"[^"]+"' | tr -d '"')
-[[ -z "$founders" ]] && { echo "Error: no 'founders' vector found in $PARFILE" >&2; exit 1; }
-
-# Resolve each founder name to a BAM in the bam list by its SM read-group tag.
-: > "$flist"
-while IFS= read -r bam; do
-  [[ -z "$bam" ]] && continue
-  sm=$(samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1)
-  for f in $founders; do
-    if [[ "$sm" == "$f" ]]; then echo "$bam" >> "$flist"; break; fi
-  done
-done < "$BAMLIST"
-
-nfound=$(grep -cve '^[[:space:]]*$' "$flist" || true)
-nwant=$(echo "$founders" | grep -cve '^[[:space:]]*$')
-echo "founders from $PARFILE ($nwant): $(echo $founders | tr '\n' ' ')"
-echo "matched $nfound founder BAM(s) by SM tag in $BAMLIST -> $flist"
-[[ "$nfound" -eq "$nwant" ]] || { echo "Error: matched $nfound of $nwant founders; check SM tags / bam_list" >&2; exit 1; }
+# Assemble the founder BAM list, either directly (shared) or by config (project).
+if [[ -n "${FOUNDER_BAMS:-}" ]]; then
+  grep -ve '^[[:space:]]*$' "$FOUNDER_BAMS" > "$flist"
+  echo "founders (direct): $(grep -cve '^[[:space:]]*$' "$flist") BAM(s) from $FOUNDER_BAMS"
+else
+  [[ -z "${PARFILE:-}" ]] && { echo "Error: --parfile (with --bamlist) or --founders required" >&2; exit 1; }
+  [[ -z "${BAMLIST:-}" ]] && { echo "Error: --bamlist required with --parfile" >&2; exit 1; }
+  # Founder names, straight from the project config (hap_params.R `founders`).
+  founders=$(grep -E '^[[:space:]]*founders' "$PARFILE" | grep -oE '"[^"]+"' | tr -d '"')
+  [[ -z "$founders" ]] && { echo "Error: no 'founders' vector found in $PARFILE" >&2; exit 1; }
+  # Resolve each founder name to a BAM in the bam list by its SM read-group tag.
+  : > "$flist"
+  while IFS= read -r bam; do
+    [[ -z "$bam" ]] && continue
+    sm=$(samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1)
+    for f in $founders; do
+      if [[ "$sm" == "$f" ]]; then echo "$bam" >> "$flist"; break; fi
+    done
+  done < "$BAMLIST"
+  nfound=$(grep -cve '^[[:space:]]*$' "$flist" || true)
+  nwant=$(echo "$founders" | grep -cve '^[[:space:]]*$')
+  echo "founders from $PARFILE ($nwant): $(echo $founders | tr '\n' ' ')"
+  echo "matched $nfound founder BAM(s) by SM tag in $BAMLIST -> $flist"
+  [[ "$nfound" -eq "$nwant" ]] || { echo "Error: matched $nfound of $nwant founders; check SM tags / bam_list" >&2; exit 1; }
+fi
 
 # 1-2. Call founders (BAQ off, -B), split multiallelics, mark SNPs near indels.
 bcftools mpileup -B -q 20 -Q 20 --max-depth 1000 -a FORMAT/AD,FORMAT/DP \
