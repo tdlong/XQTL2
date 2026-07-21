@@ -1163,7 +1163,7 @@ not for byte-identity (the callsets differ by design). Steps:
 3. When both runs are done, compare the two callsets:
 
    ```bash
-   module load R
+   module load R/4.2.2
    Rscript pipeline/scripts/compare_refalt_calls.R \
            process/<project>          \
            process/<project>_catalog

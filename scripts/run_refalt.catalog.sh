@@ -92,6 +92,6 @@ JID_COUNT=$(sbatch --parsable ${COUNT_DEP} \
 # 3. Merge per-sample counts into drop-in RefAlt.<chr>.txt (one job).
 JID_MERGE=$(sbatch --parsable --dependency=afterok:${JID_COUNT} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=1 --mem-per-cpu=16G --time=02:00:00 \
-    --wrap="module load R; Rscript pipeline/scripts/catalog_merge.R ${DIR}")
+    --wrap="module load R/4.2.2; Rscript pipeline/scripts/catalog_merge.R ${DIR}")
 
 echo "${JID_MERGE}"
