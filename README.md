@@ -1041,3 +1041,100 @@ bash pipeline/scripts/compare_refalt.sh \
 If every chromosome reports `IDENTICAL`, the candidate is equivalent and can be
 promoted to replace `bam2bcf2REFALT.sh` / `run_refalt.sh`. Tune the tiling with
 `--window` / `--pad`.
+
+---
+
+## Appendix — Proposed founder-catalog REFALT pipeline (under evaluation)
+
+> **Status: candidate, not yet adopted.** The validated Step 3 caller
+> (`bam2bcf2REFALT.sh` / `run_refalt.sh`) is unchanged. This is a *different*
+> way to build the ref/alt table, being evaluated against the current one. Its
+> callset is deliberately **not** byte-identical to the current pipeline — it is
+> compared on quality, not equality.
+
+**Why.** The current caller joint-calls every BAM and keeps SNPs on `QUAL>59`.
+`QUAL` is a joint-cohort, diploid-model statistic that shifts with interval spec
+(`-r` vs `-t`), BAQ, and how many samples are in the run — so it does not scale
+as samples are added (every addition re-calls everything) and is not stable
+across runs. The current pipeline *already* applies a founder-fixation filter
+downstream (`REFALT2haps.code.R`, the `good_SNPs` step); this proposal makes that
+biological filter the primary one and drops `QUAL` entirely.
+
+**How.** Define the SNP set **once from the founders** (every founder near-fixed
+and segregating; SNPs within `--snpgap` bp of a founder indel removed), then count
+each BAM against that fixed catalog. SNPs are catalogued **genome-wide** —
+heterochromatin is not censored. Counting is deterministic (`-B`, BAQ off;
+`-T catalog`, fixed positions), so it is independent of interval spec and of the
+rest of the cohort. Adding a sample is one more array element — nothing prior is
+recomputed. The merge emits drop-in `RefAlt.<chr>.txt`, so REFALT2haps and the
+scans run unchanged.
+
+**Founders come from the project config.** The founder set is whatever
+`hap_params.R`'s `founders` vector lists — the A-pop or B-pop founders, plus any
+tester strain crossed into the design (added there as an extra founder name).
+`catalog_build.sh` reads those names from `--parfile` and resolves each to a BAM
+in `--bamlist` by its SM read-group tag; there is no separate founder list to
+maintain.
+
+**The `--dir` is persistent project state — founders are called once.** The
+catalog and each sample's counts are written once and reused. Adding samples
+later must *not* recall the founders or recount prior samples: append the new
+BAMs to `bam_list.txt` and rerun the same `run_refalt.catalog.sh` command — the
+build step reuses the existing catalog, already-counted BAMs (founders included)
+skip themselves, only the new BAMs are counted, and everything is re-merged.
+This is the scaling property the whole design exists for: adding sample N+1 costs
+one count job, not a full recall.
+
+Because the catalog is founder-only and the founders are fixed reference strains,
+a standard design can reuse a **precalled catalog** instead of building one: pass
+`--catalog <file>` (a bgzipped + tabixed catalog, shipped like `FREQ_SNPs`) and
+the build step is skipped entirely. Only a design with a novel tester strain
+needs to build its own.
+
+Scripts: `catalog_build.sh` (founder catalog), `catalog_count.sh` (per-sample
+counting array), `catalog_merge.R` (→ `RefAlt.<chr>.txt`),
+`run_refalt.catalog.sh` (wrapper), `compare_refalt_calls.R` (evaluation).
+
+### The test
+
+The candidate is evaluated **against the current pipeline on the same project**,
+not for byte-identity (the callsets differ by design). Steps:
+
+1. Pick a project that already has a validated current-pipeline callset in
+   `process/<project>/` (the `RefAlt.<chr>.txt` files from `run_refalt.sh`).
+2. Run the candidate into a **separate** directory, from the same config:
+
+   ```bash
+   JID=$(bash pipeline/scripts/run_refalt.catalog.sh \
+           --bamlist helpfiles/<project>/bam_list.txt \
+           --parfile helpfiles/<project>/hap_params.R \
+           --dir     process/<project>_catalog)
+   ```
+3. When both runs are done, compare the two callsets:
+
+   ```bash
+   module load R
+   Rscript pipeline/scripts/compare_refalt_calls.R \
+           process/<project>          \
+           process/<project>_catalog
+   ```
+
+`compare_refalt_calls.R` reports, per chromosome: how many SNPs each side keeps
+and their overlap; the fraction of shared SNPs whose per-sample counts agree
+(plus mean |allele-frequency difference|); and it writes the sites unique to each
+side (`compare.<chr>.a_only.txt`, `compare.<chr>.b_only.txt`) for inspection.
+
+**What a pass looks like:**
+
+- The candidate keeps **at least as many** usable SNPs as the current pipeline,
+  with high overlap on the shared set.
+- At shared SNPs, counts agree closely — any residual is just BAQ-on (current)
+  vs BAQ-off (candidate), so mean |freq diff| should be small.
+- The **current-only** sites are ones QUAL happened to pass but the founders are
+  not clean at (expected to be few and suspect); the **candidate-only** sites are
+  real founder-segregating SNPs QUAL dropped (the intended gain).
+- Optional confirmation: feed the candidate `RefAlt.<chr>.txt` through the
+  existing `run_haps.sh` + scan and check the scan peaks match (or sharpen).
+
+Thresholds are tunable (`--min-dp`, `--maxaf`, `--snpgap`; `--snpgap 0` disables
+the near-indel filter).
