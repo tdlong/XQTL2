@@ -74,8 +74,10 @@ done
 
 [[ -z "${DIR:-}" ]] && { echo "Error: --dir required" >&2; exit 1; }
 
+# NB: bcftools/1.21 and samtools/1.10 link incompatible htslib versions and must
+# never be loaded in the same shell (bcftools then fails the htslib symbol lookup,
+# exit 127). Load bcftools here; read SM tags with samtools in an isolated subshell.
 module load bcftools/1.21
-module load samtools/1.10
 
 mkdir -p "${DIR}"
 raw="${DIR}/founders.calls.bcf"
@@ -100,14 +102,17 @@ else
   founders=$(grep -E '^[[:space:]]*founders' "$PARFILE" | grep -oE '"[^"]+"' | tr -d '"')
   [[ -z "$founders" ]] && { echo "Error: no 'founders' vector found in $PARFILE" >&2; exit 1; }
   # Resolve each founder name to a BAM in the bam list by its SM read-group tag.
-  : > "$flist"
-  while IFS= read -r bam; do
-    [[ -z "$bam" ]] && continue
-    sm=$(samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1)
-    for f in $founders; do
-      if [[ "$sm" == "$f" ]]; then echo "$bam" >> "$flist"; break; fi
-    done
-  done < "$BAMLIST"
+  # samtools is loaded ONLY inside this subshell, so its htslib never enters the
+  # bcftools environment of the parent shell (see the module-load note above).
+  ( module load samtools/1.10
+    while IFS= read -r bam; do
+      [[ -z "$bam" ]] && continue
+      sm=$(samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1)
+      for f in $founders; do
+        if [[ "$sm" == "$f" ]]; then echo "$bam"; break; fi
+      done
+    done < "$BAMLIST"
+  ) > "$flist"
   nfound=$(grep -cve '^[[:space:]]*$' "$flist" || true)
   nwant=$(echo "$founders" | grep -cve '^[[:space:]]*$')
   echo "founders from $PARFILE ($nwant): $(echo $founders | tr '\n' ' ')"

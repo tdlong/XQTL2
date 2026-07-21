@@ -31,8 +31,10 @@ cat="${output}/catalog.tsv.gz"
 
 [[ -f "$cat" ]] || { echo "Error: catalog not found: $cat (run catalog_build.sh first)" >&2; exit 1; }
 
+# NB: bcftools/1.21 and samtools/1.10 link incompatible htslib versions and must
+# never be loaded in the same shell (bcftools then fails with exit 127). Load
+# bcftools here; read the SM tag with samtools in an isolated subshell below.
 module load bcftools/1.21
-module load samtools/1.10
 mkdir -p "${output}/counts"
 
 bam=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$bams")
@@ -40,7 +42,9 @@ bam=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$bams")
 
 # Resolve the sample name (SM tag) up front so an already-counted sample is
 # skipped WITHOUT redoing the pileup — this is what makes adding samples cheap.
-name=$(samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1)
+# samtools runs in an isolated subshell so its htslib never enters this shell's
+# bcftools environment.
+name=$( module load samtools/1.10; samtools view -H "$bam" | awk -F'\t' '/^@RG/{for(i=1;i<=NF;i++) if($i ~ /^SM:/) print substr($i,4)}' | sort -u | head -1 )
 [[ -z "$name" ]] && { echo "No SM tag in $bam" >&2; exit 1; }
 out="${output}/counts/${name}.tsv.gz"
 
