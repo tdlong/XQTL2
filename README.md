@@ -1140,9 +1140,10 @@ bash pipeline/scripts/run_haps.sh --after $JID --parfile helpfiles/<project>/hap
 ```
 
 *Optimization (ignore until it matters):* many projects on the same population
-founders can skip even the per-project build by passing a shipped catalog with
-`--catalog pipeline/helpfiles/catalog_<pop>.tsv.gz` (built once with
-`catalog_build.sh --founders pipeline/helpfiles/<pop>_founders.bams.txt`).
+founders can skip even the per-project build by reusing a catalog built once and
+shipped in `helpfiles/` — build it with `catalog_build.sh --founders` pointed at
+`pipeline/helpfiles/B_founders.bams.txt` (or the A-pop list), then pass that
+catalog file to `run_refalt.catalog.sh` via `--catalog`.
 
 ### The test
 
