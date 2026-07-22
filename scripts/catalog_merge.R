@@ -8,10 +8,10 @@
 #
 # Memory: all count files are the SAME catalog sites in the SAME order (each is
 # mpileup -T against the one catalog), so this is really just lining up REF/ALT
-# columns. The whole-genome catalog is <1M SNPs; each sample adds two 4-byte
-# integers = 8 bytes/site (~8 MB/sample), so the full wide table for ~100 samples
-# is <1GB. Samples are joined one at a time, keeping peak to ~one copy. Standard
-# 6G/core is ample; no highmem, no chromosome subsetting.
+# columns. The whole-genome catalog is <2M SNPs; each sample adds two 4-byte
+# integers = 8 bytes/site (~16 MB/sample), so the full wide table for ~100
+# samples is ~1.6GB. Samples are joined one at a time, keeping peak to ~one copy
+# (~3GB). Standard 6G/core is ample; no highmem, no chromosome subsetting.
 #
 # Usage:
 #   Rscript catalog_merge.R <output_dir> [chr1,chr2,...]

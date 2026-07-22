@@ -87,7 +87,7 @@ JID_COUNT=$(sbatch --parsable --dependency=afterok:${JID_CAT} \
 
 # 4. Merge per-sample counts into drop-in RefAlt.<chr>.txt. The count files are
 #    all the same catalog sites in the same order, so this just lines up REF/ALT
-#    columns: <1M sites x ~100 samples x 8 bytes ~= <1GB. Plain standard/6G.
+#    columns: <2M sites x ~100 samples x 8 bytes ~= 1.6GB. Plain standard/6G.
 JID_MERGE=$(sbatch --parsable --dependency=afterok:${JID_COUNT} \
     -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=2 --mem-per-cpu=6G --time=02:00:00 \
     --wrap="module load R/4.2.2; Rscript pipeline/scripts/catalog_merge.R ${DIR}")
