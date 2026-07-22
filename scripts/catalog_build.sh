@@ -2,8 +2,8 @@
 #SBATCH --job-name=catalog_build
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=2G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=6G
 #SBATCH --time=08:00:00
 # Submitted by run_refalt.catalog.sh as a 5-task array, ONE CHROMOSOME per task
 # (bcftools mpileup is single-threaded, so per-chromosome parallelism matters —
@@ -46,7 +46,7 @@ REF=pipeline/ref/dm6.fa
 MIN_DP=20
 MAXAF=0.03
 SNPGAP=5
-THREADS=8
+THREADS=2   # bcftools mpileup pileup is single-threaded; --threads only helps BGZF I/O
 
 while [[ $# -gt 0 ]]; do
   case $1 in
