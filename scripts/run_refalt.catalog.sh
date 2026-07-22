@@ -85,13 +85,11 @@ JID_COUNT=$(sbatch --parsable --dependency=afterok:${JID_CAT} \
     "${BAMLIST}" "${DIR}" \
     | cut -d_ -f1)
 
-# 4. Merge per-sample counts into drop-in RefAlt.<chr>.txt. This is the
-#    memory-heavy step (a genome-wide join over all samples), so it goes to
-#    highmem like REFALT2haps. 2 x 10G = 20G; standard caps at 6G/core and
-#    highmem at 10G/core. Merge memory scales with samples x sites — tune from
-#    seff once a real experiment has run.
+# 4. Merge per-sample counts into drop-in RefAlt.<chr>.txt. The count files are
+#    all the same catalog sites in the same order, so this just lines up REF/ALT
+#    columns: <1M sites x ~100 samples x 8 bytes ~= <1GB. Plain standard/6G.
 JID_MERGE=$(sbatch --parsable --dependency=afterok:${JID_COUNT} \
-    -A ${ACCOUNT} -p highmem --cpus-per-task=2 --mem-per-cpu=10G --time=02:00:00 \
+    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=2 --mem-per-cpu=6G --time=02:00:00 \
     --wrap="module load R/4.2.2; Rscript pipeline/scripts/catalog_merge.R ${DIR}")
 
 echo "${JID_MERGE}"

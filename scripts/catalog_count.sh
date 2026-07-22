@@ -3,7 +3,7 @@
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
 #SBATCH --cpus-per-task=2
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=6G
 #SBATCH --time=1-00:00:00
 # Submitted by run_refalt.catalog.sh as an array with ONE SAMPLE per task
 # (--array=1-<#BAMs>). Counting a fixed catalog is not split by chromosome —

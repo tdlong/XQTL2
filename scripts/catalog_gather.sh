@@ -3,7 +3,7 @@
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=6G
 #SBATCH --time=00:30:00
 
 # catalog_gather.sh — concatenate the per-chromosome catalog pieces

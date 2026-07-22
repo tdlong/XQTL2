@@ -1,21 +1,22 @@
 # catalog_merge.R — merge per-sample catalog counts into drop-in RefAlt.<chr>.txt
 #
-# Part of the PROPOSED parallel REFALT path (see catalog_build.sh / catalog_count.sh).
-# Reads every counts/<sample>.tsv.gz, outer-joins them on the catalog site
-# (CHROM,POS,REF,ALT), fills missing coverage with 0, and writes one
-# RefAlt.<chr>.txt per chromosome in the SAME format the validated pipeline
-# produces (CHROM POS REF_<name> ALT_<name> ...), so REFALT2haps runs unchanged.
+# Part of the PROPOSED parallel REFALT path (see catalog_count.sh). Reads every
+# counts/<sample>.tsv.gz, joins them on the catalog site (CHROM,POS,REF,ALT),
+# fills missing coverage with 0, and writes one RefAlt.<chr>.txt per chromosome
+# in the SAME format the validated pipeline produces (CHROM POS REF_<name>
+# ALT_<name> ...), so REFALT2haps runs unchanged.
 #
-# Column order is cosmetic here: REFALT2haps matches samples by column NAME, not
-# position. REF_<name>/ALT_<name> are kept adjacent per sample for readability.
+# Memory: all count files are the SAME catalog sites in the SAME order (each is
+# mpileup -T against the one catalog), so this is really just lining up REF/ALT
+# columns. The whole-genome catalog is <1M SNPs; each sample adds two 4-byte
+# integers = 8 bytes/site (~8 MB/sample), so the full wide table for ~100 samples
+# is <1GB. Samples are joined one at a time, keeping peak to ~one copy. Standard
+# 6G/core is ample; no highmem, no chromosome subsetting.
 #
 # Usage:
 #   Rscript catalog_merge.R <output_dir> [chr1,chr2,...]
 
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(data.table)
-})
+suppressPackageStartupMessages(library(data.table))
 
 args   <- commandArgs(trailingOnly = TRUE)
 outdir <- args[1]
@@ -23,24 +24,23 @@ chrs   <- if (length(args) >= 2) strsplit(args[2], ",")[[1]] else c("chrX", "chr
 
 files <- list.files(file.path(outdir, "counts"), pattern = "\\.tsv\\.gz$", full.names = TRUE)
 if (length(files) == 0) stop("no counts/*.tsv.gz in ", outdir)
-
 key <- c("CHROM", "POS", "REF", "ALT")
-# read via gzip -dc so we don't depend on the R.utils package for .gz
-tabs <- lapply(files, function(f) fread(cmd = paste("gzip -dc", shQuote(f)), sep = "\t", header = TRUE))
-merged <- reduce(tabs, full_join, by = key)
 
-# missing (sample, site) coverage -> 0 reads
-countcols <- setdiff(names(merged), key)
-setDT(merged)
-merged[, (countcols) := lapply(.SD, function(x) fifelse(is.na(x), 0L, as.integer(x))), .SDcols = countcols]
+# Join one sample at a time; peak memory stays ~one copy of the growing table.
+merged <- NULL
+for (f in files) {
+  dt <- fread(cmd = paste("gzip -dc", shQuote(f)), sep = "\t", header = TRUE)   # CHROM POS REF ALT REF_<name> ALT_<name>
+  merged <- if (is.null(merged)) dt else merge(merged, dt, by = key, all = TRUE)
+}
 
-# drop the allele columns; RefAlt.<chr>.txt is CHROM POS + REF_/ALT_ per sample
-merged[, c("REF", "ALT") := NULL]
+cc <- setdiff(names(merged), key)
+merged[, (cc) := lapply(.SD, function(x) fifelse(is.na(x), 0L, as.integer(x))), .SDcols = cc]
+merged[, c("REF", "ALT") := NULL]      # RefAlt.<chr>.txt is CHROM POS + REF_/ALT_ per sample
 setorder(merged, CHROM, POS)
 
 for (chr in chrs) {
   sub <- merged[CHROM == chr]
   f <- file.path(outdir, paste0("RefAlt.", chr, ".txt"))
   fwrite(sub, f, sep = "\t")
-  cat(sprintf("wrote %s (%d sites, %d samples)\n", f, nrow(sub), length(countcols) / 2))
+  cat(sprintf("wrote %s (%d sites, %d samples)\n", f, nrow(sub), length(cc) / 2))
 }
