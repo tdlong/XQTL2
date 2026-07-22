@@ -41,10 +41,11 @@
 #   sbatch --array=1-5 catalog_build.sh --founders <founder_bams.txt> --dir <dir>
 #
 # Options (defaults): --min-dp 10  --maxaf 0.03  --snpgap 5 (0 disables)
-#                     --exempt-founders B5  --ref pipeline/ref/dm6.fa
-# --exempt-founders: comma-separated founder names skipped in the depth/fixation
-# gates (still counted as samples). Default B5 (shallow reference-subtracted B-pop
-# founder); harmless if the name is absent (e.g. A-pop).
+#                     --exempt-founders B5:chr2L  --ref pipeline/ref/dm6.fa
+# --exempt-founders: comma-separated founders dropped from the rules (still counted
+# as samples). Each is NAME (all chromosomes) or NAME:CHR (that chromosome only).
+# Default B5:chr2L (B5's chr2L is a shallow, circular reconstructed haplotype; B5 is
+# a normal founder elsewhere). Harmless if the name is absent (e.g. A-pop).
 
 set -euo pipefail
 
@@ -53,9 +54,12 @@ MIN_DP=10
 MAXAF=0.03
 SNPGAP=5
 THREADS=2   # bcftools mpileup pileup is single-threaded; --threads only helps BGZF I/O
-EXEMPT="B5" # founders excluded from the depth/fixation gates (still counted as samples).
-            # B5 is the reference-subtracted B-pop founder — fixed but shallow, so it
-            # would otherwise gate every site. Harmless if absent (e.g. A-pop).
+EXEMPT="B5:chr2L" # founders dropped from the rule evaluation (as if not a founder) —
+            # but still counted as samples in RefAlt. Comma-separated; each entry is
+            # NAME (all chromosomes) or NAME:CHR (that chromosome only). Default
+            # B5:chr2L: B5's chr2L is a reconstructed haplotype (see data/founders/
+            # FOUNDERS.md) — shallow AND its alleles are circular there — but B5 is a
+            # normal ~15-22x founder on the other arms, so it is only exempt on chr2L.
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -135,7 +139,11 @@ fnames=( $(bcftools query -l "$raw") )
 skipcols=""
 for i in "${!fnames[@]}"; do
   for e in ${EXEMPT//,/ }; do
-    [[ "${fnames[$i]}" == "$e" ]] && skipcols="${skipcols} $((5 + i))"
+    ename="${e%%:*}"                       # "B5"    from "B5:chr2L"
+    echr=""; [[ "$e" == *:* ]] && echr="${e#*:}"   # "chr2L" (empty = all chromosomes)
+    if [[ "${fnames[$i]}" == "$ename" ]] && { [[ -z "$echr" ]] || [[ "$echr" == "$mychr" ]]; }; then
+      skipcols="${skipcols} $((5 + i))"
+    fi
   done
 done
 [[ -n "${skipcols// }" ]] && echo "${mychr}: exempting founder field(s)${skipcols} (${EXEMPT}) from depth/fixation gates"

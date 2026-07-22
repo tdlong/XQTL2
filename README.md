@@ -1069,6 +1069,29 @@ rest of the cohort. Adding a sample is one more array element — nothing prior 
 recomputed. The merge emits drop-in `RefAlt.<chr>.txt`, so REFALT2haps and the
 scans run unchanged.
 
+### How a SNP gets into the catalog
+
+A biallelic SNP is kept if, **across the founders**:
+
+1. **Coverage** — every founder has at least `--min-dp` reads (default 10).
+2. **Near-fixed** — every founder's ALT frequency is ≤ `--maxaf` (0.03) or ≥ `1 − maxaf`
+   (0.97); no founder sits in between.
+3. **Polymorphic** — at least one founder is fixed for REF *and* at least one is fixed
+   for ALT (so it is not the case that all founders are ≥0.97, nor all ≤0.03).
+4. **Clean** — biallelic and not within `--snpgap` bp (5) of a founder indel.
+
+Everything is genome-wide (heterochromatin not censored) and the thresholds are
+tunable (`--min-dp`, `--maxaf`, `--snpgap`).
+
+**Exempt founders (`--exempt-founders`, default `B5:chr2L`).** An exempt founder is
+dropped from rules 1–3 *as if it were not a founder* — the rules are applied to the
+remaining founders — but its REF/ALT counts are still written to `RefAlt`. The
+default exempts **B5 on chr2L only**: B5's chr2L is a reconstructed haplotype that is
+both shallow and, by construction, circular (its reads were selected to match B5's own
+alleles — see `data/founders/FOUNDERS.md`), so it carries no independent evidence
+there. B5 is a normal founder on every other chromosome. Entries are comma-separated,
+each `NAME` (all chromosomes) or `NAME:CHR` (that chromosome only).
+
 **Founders come from the project config.** The founder set is whatever
 `hap_params.R`'s `founders` vector lists — the A-pop or B-pop founders, plus any
 tester strain crossed into the design (added there as an extra founder name).
