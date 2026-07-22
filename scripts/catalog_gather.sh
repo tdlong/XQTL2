@@ -33,9 +33,12 @@ shopt -s nullglob
 pieces=( "${output}"/catalog.chr*.bed )
 [[ ${#pieces[@]} -ge 1 ]] || { echo "Error: no catalog.chr*.bed pieces in $output" >&2; exit 1; }
 
-# pieces are CHROM POS0 POS REF ALT; positions file for mpileup -T is CHROM POS REF ALT
+# pieces are CHROM POS0 POS REF ALT. The catalog is consumed by both
+# `bcftools mpileup -T` and `bcftools call -m -C alleles -T` (catalog_count.sh);
+# `-C alleles` requires 3 columns CHROM<TAB>POS<TAB>REF,ALT (REF/ALT comma-joined),
+# and mpileup -T accepts that form too — so emit REF,ALT joined, not as two columns.
 cat "${pieces[@]}" \
-  | awk -v OFS='\t' '{print $1, $3, $4, $5}' \
+  | awk -v OFS='\t' '{print $1, $3, $4","$5}' \
   | sort -k1,1 -k2,2n \
   | bgzip > "$cat"
 tabix -s1 -b2 -e2 "$cat"
