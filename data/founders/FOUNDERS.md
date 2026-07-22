@@ -74,14 +74,16 @@ notes in `../NOT_founders/B5_stuff.txt`):
 Tool versions for the B5 fix differ from the main pipeline: bwa 0.7.17,
 samtools 1.10, bcftools 1.10.2, picard-tools 1.87, java 17.
 
-**Consequence — B5's chr2L is shallow *and* circular.** Coverage from the notes:
-chr2L ~9.5× vs chr2R ~22×, because the inverted-haplotype reads were dropped by
-design. Worse, the surviving chr2L reads were *selected* to match B5's own alleles
-(`NM:i:0` vs `B5.fa`), so B5's chr2L "fixation" is guaranteed by construction, not
-independent evidence. B5 is a normal founder on every other chromosome. This is why
-`catalog_build.sh` drops B5 from the SNP rules **on chr2L only** by default
-(`--exempt-founders B5:chr2L`) — its counts are still written to `RefAlt`
-everywhere. See XQTL2 issue #15 and the catalog rules in the README.
+**Consequence — B5 chr2L is non-polymorphic by construction.** The chr2L reads
+were kept only if they mapped exactly (`NM:i:0`) to `B5.fa`, an ALT-only genome
+built from the B5-standard/iso-1 cross — i.e. reads are *required* to match the
+defined B5 alleles, so no variation is possible. B5 on chr2L is therefore fixed by
+design (and, as a side effect, shallower: chr2L ~9.5× vs chr2R ~22×, since
+non-matching reads were dropped). The catalog rules test each founder for
+fixation/polymorphism from its data, which is meaningless for a founder whose chr2L
+is fixed by construction — so `catalog_build.sh` drops B5 from the rules **on chr2L
+only** (`--exempt-founders B5:chr2L`). B5's counts are still written to `RefAlt`
+everywhere, and B5 is a normal founder on every other chromosome. See XQTL2 issue #15.
 
 ## `../NOT_founders/` — B5 fix intermediates (not used by the pipeline)
 

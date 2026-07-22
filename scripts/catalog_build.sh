@@ -44,8 +44,9 @@
 #                     --exempt-founders B5:chr2L  --ref pipeline/ref/dm6.fa
 # --exempt-founders: comma-separated founders dropped from the rules (still counted
 # as samples). Each is NAME (all chromosomes) or NAME:CHR (that chromosome only).
-# Default B5:chr2L (B5's chr2L is a shallow, circular reconstructed haplotype; B5 is
-# a normal founder elsewhere). Harmless if the name is absent (e.g. A-pop).
+# Default B5:chr2L (B5 chr2L is non-polymorphic by construction — its reads were
+# required to map exactly to an ALT-only reference; B5 is a normal founder
+# elsewhere). Harmless if the name is absent (e.g. A-pop).
 
 set -euo pipefail
 
@@ -57,9 +58,9 @@ THREADS=2   # bcftools mpileup pileup is single-threaded; --threads only helps B
 EXEMPT="B5:chr2L" # founders dropped from the rule evaluation (as if not a founder) —
             # but still counted as samples in RefAlt. Comma-separated; each entry is
             # NAME (all chromosomes) or NAME:CHR (that chromosome only). Default
-            # B5:chr2L: B5's chr2L is a reconstructed haplotype (see data/founders/
-            # FOUNDERS.md) — shallow AND its alleles are circular there — but B5 is a
-            # normal ~15-22x founder on the other arms, so it is only exempt on chr2L.
+            # B5:chr2L: B5 chr2L is non-polymorphic by construction (reads forced to
+            # match an ALT-only reference — see data/founders/FOUNDERS.md), so the
+            # rules do not apply there. B5 is a normal founder on the other arms.
 
 while [[ $# -gt 0 ]]; do
   case $1 in

@@ -1086,11 +1086,11 @@ tunable (`--min-dp`, `--maxaf`, `--snpgap`).
 **Exempt founders (`--exempt-founders`, default `B5:chr2L`).** An exempt founder is
 dropped from rules 1–3 *as if it were not a founder* — the rules are applied to the
 remaining founders — but its REF/ALT counts are still written to `RefAlt`. The
-default exempts **B5 on chr2L only**: B5's chr2L is a reconstructed haplotype that is
-both shallow and, by construction, circular (its reads were selected to match B5's own
-alleles — see `data/founders/FOUNDERS.md`), so it carries no independent evidence
-there. B5 is a normal founder on every other chromosome. Entries are comma-separated,
-each `NAME` (all chromosomes) or `NAME:CHR` (that chromosome only).
+default exempts **B5 on chr2L only**: B5's chr2L reads were required to map exactly to
+an ALT-only reference (see `data/founders/FOUNDERS.md`), so B5 is non-polymorphic
+there *by construction* and the fixation/polymorphism rules do not apply to it. B5 is
+a normal founder on every other chromosome. Entries are comma-separated, each `NAME`
+(all chromosomes) or `NAME:CHR` (that chromosome only).
 
 **Founders come from the project config.** The founder set is whatever
 `hap_params.R`'s `founders` vector lists — the A-pop or B-pop founders, plus any
