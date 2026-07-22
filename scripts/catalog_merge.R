@@ -1,8 +1,9 @@
 # catalog_merge.R — merge per-sample catalog counts into drop-in RefAlt.<chr>.txt
 #
 # Part of the PROPOSED parallel REFALT path (see catalog_count.sh). Reads every
-# counts/<sample>.tsv.gz, joins them on the catalog site (CHROM,POS,REF,ALT),
-# fills missing coverage with 0, and writes one RefAlt.<chr>.txt per chromosome
+# counts/<sample>.tsv.gz (columns CHROM POS REF_<name> ALT_<name>), joins them on
+# (CHROM,POS) — the catalog already fixes the alleles, so there are no allele
+# columns to key on — fills missing coverage with 0, and writes RefAlt.<chr>.txt
 # in the SAME format the validated pipeline produces (CHROM POS REF_<name>
 # ALT_<name> ...), so REFALT2haps runs unchanged.
 #

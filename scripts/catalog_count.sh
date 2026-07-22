@@ -68,12 +68,14 @@ bcftools mpileup -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \
   | bcftools call -m -C alleles -T "$cat" -Ob > "$tmp"
 
 # Emit CHROM POS REF_<name> ALT_<name>, keyed on position (alleles fixed by catalog).
+# Not tabix-indexed: catalog_merge.R reads each file whole via `gzip -dc`, and the
+# header line ("CHROM POS ...") is not a genomic interval, so indexing it is both
+# pointless and an error.
 {
   printf 'CHROM\tPOS\tREF_%s\tALT_%s\n' "$name" "$name"
   bcftools query -f '%CHROM\t%POS[\t%AD]\n' "$tmp" \
     | awk -F'\t' -v OFS='\t' '{ split($3,a,","); print $1,$2,(a[1]==""||a[1]=="."?0:a[1]),(a[2]==""||a[2]=="."?0:a[2]) }'
 } | bgzip > "$out"
-tabix -s1 -b2 -e2 "$out"
 
 rm -f "$tmp"
 echo "counted ${name} -> ${out}"

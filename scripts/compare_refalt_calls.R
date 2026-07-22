@@ -27,7 +27,7 @@ chrs <- if (length(args) >= 3) strsplit(args[3], ",")[[1]] else c("chrX", "chr2L
 
 # long format: one row per (POS, sample) with REF/ALT counts and frequency
 to_long <- function(path) {
-  df <- as.data.table(read.table(path, header = TRUE))
+  df <- fread(path, header = TRUE)   # RefAlt.<chr>.txt: CHROM POS REF_<s> ALT_<s> ...
   m <- melt(df, id.vars = c("CHROM", "POS"), variable.name = "lab", value.name = "count")
   m[, refalt := substr(lab, 1, 3)]
   m[, sample := substr(lab, 5, nchar(as.character(lab)))]
