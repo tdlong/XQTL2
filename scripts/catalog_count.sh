@@ -4,23 +4,26 @@
 #SBATCH -p standard
 #SBATCH --cpus-per-task=2
 #SBATCH --mem-per-cpu=4G
-#SBATCH --time=4:00:00
+#SBATCH --time=1-00:00:00
+# Submitted by run_refalt.catalog.sh as an array with ONE SAMPLE per task
+# (--array=1-<#BAMs>). Counting a fixed catalog is not split by chromosome —
+# one whole-genome job per sample. Since that is a pile of SLURM jobs, `seff`
+# them afterward for real per-sample timings.
 
 # catalog_count.sh — count REF/ALT reads for ONE sample against the catalog.
 #
-# Part of the PROPOSED parallel REFALT path (see catalog_build.sh). One array
-# element per BAM in the bam list. The output directory is PERSISTENT project
-# state: a sample already counted (its counts/<name>.tsv.gz exists) is SKIPPED,
-# so re-running after appending new samples to the bam list only counts the new
-# ones — founders and prior samples are never recounted. Counting is
-# deterministic (BAQ off -B; positions fixed by -T catalog), so counts do not
-# depend on interval spec or on which other samples are in the run.
+# The output directory is PERSISTENT project state: a sample already counted
+# (its counts/<name>.tsv.gz exists) is SKIPPED, so re-running after appending new
+# samples to the bam list only counts the new ones — the founder catalog is never
+# rebuilt and prior samples are never recounted. Counting is deterministic (BAQ
+# off -B; positions fixed by -T catalog), so counts do not depend on interval
+# spec or on which other samples are in the run.
 #
-# Column names come from the BAM's SM read-group tag, matching the validated
+# Column name comes from the BAM's SM read-group tag, matching the validated
 # pipeline's naming so the merge is drop-in. Set FORCE=1 to recount.
 #
-# Usage (normally via run_refalt.catalog.sh):
-#   sbatch --array=1-N catalog_count.sh <bam_list> <output_dir>
+# Usage (via run_refalt.catalog.sh):
+#   sbatch --array=1-<#BAMs> catalog_count.sh <bam_list> <output_dir>
 
 set -euo pipefail
 
@@ -29,7 +32,7 @@ bams=$1
 output=$2
 cat="${output}/catalog.tsv.gz"
 
-[[ -f "$cat" ]] || { echo "Error: catalog not found: $cat (run catalog_build.sh first)" >&2; exit 1; }
+[[ -f "$cat" ]] || { echo "Error: catalog not found: $cat (run catalog_build.sh + catalog_gather.sh first)" >&2; exit 1; }
 
 # NB: bcftools/1.21 and samtools/1.10 link incompatible htslib versions and must
 # never be loaded in the same shell (bcftools then fails with exit 127). Load
@@ -53,16 +56,16 @@ if [[ -s "$out" && "${FORCE:-0}" != "1" ]]; then
   exit 0
 fi
 
-# Restricted, BAQ-off pileup at catalog positions -> tiny per-sample BCF.
+# Whole-genome, BAQ-off pileup at catalog positions -> tiny per-sample BCF.
 tmp="${output}/counts/tmp.${SLURM_ARRAY_TASK_ID}.bcf"
 bcftools mpileup -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \
     -f "$ref" "$bam" -Ob > "$tmp"
 
-# Emit chrom pos ref alt REF_<name> ALT_<name>. Missing coverage -> 0,0.
+# Emit CHROM POS REF ALT REF_<name> ALT_<name>. Missing coverage -> 0,0.
 {
   printf 'CHROM\tPOS\tREF\tALT\tREF_%s\tALT_%s\n' "$name" "$name"
   bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%AD]\n' "$tmp" \
-    | awk -F'\t' -v OFS='\t' '{ split($5,a,","); print $1,$2,$3,$4,a[1]+0,a[2]+0 }'
+    | awk -F'\t' -v OFS='\t' '{ split($5,a,","); print $1,$2,$3,$4,(a[1]==""||a[1]=="."?0:a[1]),(a[2]==""||a[2]=="."?0:a[2]) }'
 } | bgzip > "$out"
 tabix -s1 -b2 -e2 "$out"
 

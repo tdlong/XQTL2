@@ -1085,13 +1085,16 @@ skip themselves, only the new BAMs are counted, and everything is re-merged.
 This is the scaling property the whole design exists for: adding sample N+1 costs
 one count job, not a full recall.
 
-Because the catalog is founder-only and the founders are fixed reference strains,
-a standard design can reuse a **precalled catalog** instead of building one: pass
-`--catalog <file>` (a bgzipped + tabixed catalog, shipped like `FREQ_SNPs`) and
-the build step is skipped entirely. Only a design with a novel tester strain
-needs to build its own.
+**Two phases, parallelized differently on purpose.** Calling the founders is the
+slow part (like the current caller), so `catalog_build.sh` is a per-chromosome
+array (`--array=1-5`) and `catalog_gather.sh` stitches the pieces into one
+`catalog.tsv.gz`. Counting a *fixed* catalog is cheap, so `catalog_count.sh` is
+left **per sample** — one whole-genome job per BAM, not split by chromosome.
+That keeps the count as a pile of independent SLURM jobs (easy to `seff` for real
+timings, and cheap to add a sample to) without the complexity of a 2-D fan-out.
 
-Scripts: `catalog_build.sh` (founder catalog), `catalog_count.sh` (per-sample
+Scripts: `catalog_build.sh` (founder catalog, per-chromosome array),
+`catalog_gather.sh` (pieces → `catalog.tsv.gz`), `catalog_count.sh` (per-sample
 counting array), `catalog_merge.R` (→ `RefAlt.<chr>.txt`),
 `run_refalt.catalog.sh` (wrapper), `compare_refalt_calls.R` (evaluation).
 
@@ -1138,12 +1141,6 @@ Then run haplotypes and the scan exactly as in Steps 4–5, pointed at the same
 JID=$(bash pipeline/scripts/run_refalt.catalog.sh --bamlist … --parfile … --dir process/<project>_catalog)
 bash pipeline/scripts/run_haps.sh --after $JID --parfile helpfiles/<project>/hap_params.R --dir process/<project>_catalog
 ```
-
-*Optimization (ignore until it matters):* many projects on the same population
-founders can skip even the per-project build by reusing a catalog built once and
-shipped in `helpfiles/` — build it with `catalog_build.sh --founders` pointed at
-`pipeline/helpfiles/B_founders.bams.txt` (or the A-pop list), then pass that
-catalog file to `run_refalt.catalog.sh` via `--catalog`.
 
 ### The test
 
