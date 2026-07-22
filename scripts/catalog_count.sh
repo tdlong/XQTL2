@@ -2,9 +2,11 @@
 #SBATCH --job-name=catalog_count
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=6G
 #SBATCH --time=1-00:00:00
+# 1 core: the mpileup | call pipe is single-threaded (no --threads) and uses
+# ~1 core / <300 MB per seff. One task per sample, so an extra core is pure waste.
 # Submitted by run_refalt.catalog.sh as an array with ONE SAMPLE per task
 # (--array=1-<#BAMs>). Counting a fixed catalog is not split by chromosome —
 # one whole-genome job per sample. Since that is a pile of SLURM jobs, `seff`
