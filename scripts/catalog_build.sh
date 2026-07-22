@@ -25,7 +25,9 @@
 #      concatenates the per-chromosome pieces into one genome-wide catalog.tsv.gz.
 #
 # Thresholds match the current good_SNPs step (near-fixed = freq <= 0.03 or
-# >= 0.97); the depth floor is an explicit, stricter --min-dp (default 20x).
+# >= 0.97); the depth floor is an explicit --min-dp (default 10x, required of
+# every founder — some B-pop founders, e.g. the reference-subtracted B5, run
+# shallow, so 20x across all founders throws out most sites).
 # Catalogued genome-wide within each chromosome — heterochromatin not censored.
 #
 # TWO WAYS to specify founders:
@@ -38,27 +40,35 @@
 #   sbatch --array=1-5 catalog_build.sh --parfile <hap_params.R> --bamlist <bam_list> --dir <dir>
 #   sbatch --array=1-5 catalog_build.sh --founders <founder_bams.txt> --dir <dir>
 #
-# Options (defaults): --min-dp 20  --maxaf 0.03  --snpgap 5 (0 disables)  --ref pipeline/ref/dm6.fa
+# Options (defaults): --min-dp 10  --maxaf 0.03  --snpgap 5 (0 disables)
+#                     --exempt-founders B5  --ref pipeline/ref/dm6.fa
+# --exempt-founders: comma-separated founder names skipped in the depth/fixation
+# gates (still counted as samples). Default B5 (shallow reference-subtracted B-pop
+# founder); harmless if the name is absent (e.g. A-pop).
 
 set -euo pipefail
 
 REF=pipeline/ref/dm6.fa
-MIN_DP=20
+MIN_DP=10
 MAXAF=0.03
 SNPGAP=5
 THREADS=2   # bcftools mpileup pileup is single-threaded; --threads only helps BGZF I/O
+EXEMPT="B5" # founders excluded from the depth/fixation gates (still counted as samples).
+            # B5 is the reference-subtracted B-pop founder — fixed but shallow, so it
+            # would otherwise gate every site. Harmless if absent (e.g. A-pop).
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --parfile)   PARFILE="$2";       shift 2 ;;
-    --bamlist)   BAMLIST="$2";       shift 2 ;;
-    --founders)  FOUNDER_BAMS="$2";  shift 2 ;;
-    --dir)       DIR="$2";           shift 2 ;;
-    --ref)       REF="$2";           shift 2 ;;
-    --min-dp)    MIN_DP="$2";        shift 2 ;;
-    --maxaf)     MAXAF="$2";         shift 2 ;;
-    --snpgap)    SNPGAP="$2";        shift 2 ;;
-    --threads)   THREADS="$2";       shift 2 ;;
+    --parfile)          PARFILE="$2";       shift 2 ;;
+    --bamlist)          BAMLIST="$2";       shift 2 ;;
+    --founders)         FOUNDER_BAMS="$2";  shift 2 ;;
+    --dir)              DIR="$2";           shift 2 ;;
+    --ref)              REF="$2";           shift 2 ;;
+    --min-dp)           MIN_DP="$2";        shift 2 ;;
+    --maxaf)            MAXAF="$2";         shift 2 ;;
+    --snpgap)           SNPGAP="$2";        shift 2 ;;
+    --exempt-founders)  EXEMPT="$2";        shift 2 ;;
+    --threads)          THREADS="$2";       shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -119,13 +129,28 @@ bcftools mpileup -B -q 20 -Q 20 --max-depth 1000 -a FORMAT/AD,FORMAT/DP \
   | bcftools norm -f "$REF" -m - --threads "$THREADS" -Ou \
   | bcftools filter -g "$SNPGAP" --threads "$THREADS" -Ob > "$raw"
 
+# Founder order in the BCF == the AD column order below (query field 4+i for the
+# i-th founder). Turn --exempt-founders names into the AD fields to skip.
+fnames=( $(bcftools query -l "$raw") )
+skipcols=""
+for i in "${!fnames[@]}"; do
+  for e in ${EXEMPT//,/ }; do
+    [[ "${fnames[$i]}" == "$e" ]] && skipcols="${skipcols} $((5 + i))"
+  done
+done
+[[ -n "${skipcols// }" ]] && echo "${mychr}: exempting founder field(s)${skipcols} (${EXEMPT}) from depth/fixation gates"
+
 # 3. Founder-fixation filter -> catalog.<chr>.bed: CHROM POS0 POS REF ALT
+#    Exempt founders (e.g. shallow B5) are skipped in the loop: they neither gate
+#    on depth nor contribute to the near-fixed / segregation tests.
 bcftools view -m2 -M2 -v snps -e 'FILTER~"SnpGap"' "$raw" \
   | bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%AD]\n' \
-  | awk -F'\t' -v OFS='\t' -v mindp="$MIN_DP" -v maxaf="$MAXAF" '
+  | awk -F'\t' -v OFS='\t' -v mindp="$MIN_DP" -v maxaf="$MAXAF" -v skipcols="$skipcols" '
+    BEGIN { n = split(skipcols, s, " "); for (k = 1; k <= n; k++) if (s[k] != "") skip[s[k]] = 1 }
     {
         segR = 0; segA = 0; ok = 1
         for (i = 5; i <= NF; i++) {
+            if (i in skip) continue                 # exempt founder: free pass
             split($i, a, ",")
             r = a[1] + 0; v = a[2] + 0; dp = r + v
             if (dp < mindp) { ok = 0; break }

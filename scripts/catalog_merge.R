@@ -24,18 +24,17 @@ chrs   <- if (length(args) >= 2) strsplit(args[2], ",")[[1]] else c("chrX", "chr
 
 files <- list.files(file.path(outdir, "counts"), pattern = "\\.tsv\\.gz$", full.names = TRUE)
 if (length(files) == 0) stop("no counts/*.tsv.gz in ", outdir)
-key <- c("CHROM", "POS", "REF", "ALT")
+key <- c("CHROM", "POS")   # the catalog fixes the alleles; counts are keyed on position
 
 # Join one sample at a time; peak memory stays ~one copy of the growing table.
 merged <- NULL
 for (f in files) {
-  dt <- fread(cmd = paste("gzip -dc", shQuote(f)), sep = "\t", header = TRUE)   # CHROM POS REF ALT REF_<name> ALT_<name>
+  dt <- fread(cmd = paste("gzip -dc", shQuote(f)), sep = "\t", header = TRUE)   # CHROM POS REF_<name> ALT_<name>
   merged <- if (is.null(merged)) dt else merge(merged, dt, by = key, all = TRUE)
 }
 
 cc <- setdiff(names(merged), key)
 merged[, (cc) := lapply(.SD, function(x) fifelse(is.na(x), 0L, as.integer(x))), .SDcols = cc]
-merged[, c("REF", "ALT") := NULL]      # RefAlt.<chr>.txt is CHROM POS + REF_/ALT_ per sample
 setorder(merged, CHROM, POS)
 
 for (chr in chrs) {

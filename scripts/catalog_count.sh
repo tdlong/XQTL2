@@ -56,16 +56,22 @@ if [[ -s "$out" && "${FORCE:-0}" != "1" ]]; then
   exit 0
 fi
 
-# Whole-genome, BAQ-off pileup at catalog positions -> tiny per-sample BCF.
+# Count reads for the CATALOG's fixed REF/ALT at each site. mpileup reports ALT
+# per sample (<*>, C,<*>, ...), which would make AD{1} mean different alleles in
+# different samples and fragment sites at merge time (issue #14). `call -m -C
+# alleles -T catalog` constrains genotyping to the catalog's REF/ALT, so AD{0}=
+# REF reads and AD{1}=ALT reads mean the same allele in every sample. -C alleles
+# also emits every catalog site (0 coverage -> AD 0,0), so the tables align.
 tmp="${output}/counts/tmp.${SLURM_ARRAY_TASK_ID}.bcf"
 bcftools mpileup -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \
-    -f "$ref" "$bam" -Ob > "$tmp"
+    -f "$ref" "$bam" -Ou \
+  | bcftools call -m -C alleles -T "$cat" -Ob > "$tmp"
 
-# Emit CHROM POS REF ALT REF_<name> ALT_<name>. Missing coverage -> 0,0.
+# Emit CHROM POS REF_<name> ALT_<name>, keyed on position (alleles fixed by catalog).
 {
-  printf 'CHROM\tPOS\tREF\tALT\tREF_%s\tALT_%s\n' "$name" "$name"
-  bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%AD]\n' "$tmp" \
-    | awk -F'\t' -v OFS='\t' '{ split($5,a,","); print $1,$2,$3,$4,(a[1]==""||a[1]=="."?0:a[1]),(a[2]==""||a[2]=="."?0:a[2]) }'
+  printf 'CHROM\tPOS\tREF_%s\tALT_%s\n' "$name" "$name"
+  bcftools query -f '%CHROM\t%POS[\t%AD]\n' "$tmp" \
+    | awk -F'\t' -v OFS='\t' '{ split($3,a,","); print $1,$2,(a[1]==""||a[1]=="."?0:a[1]),(a[2]==""||a[2]=="."?0:a[2]) }'
 } | bgzip > "$out"
 tabix -s1 -b2 -e2 "$out"
 
