@@ -1090,6 +1090,48 @@ there *by construction* and the rules do not apply to it; B5 is a normal founder
 every other chromosome. Entries are comma-separated, each `NAME` (all chromosomes)
 or `NAME:CHR` (that chromosome only).
 
+### Why the founder-only callset is at least as good (and much faster)
+
+The essential change is **what a SNP is decided on**:
+
+- **Current caller** — QUAL from a joint call of the **founders *and* samples** together.
+  Which sites survive depends on the whole pool, so the sample data (and any
+  pooled-call artifacts) affect ascertainment, and the set shifts as samples change.
+- **Founder catalog** — the SNP set is decided **entirely from the founders** (the
+  community A/B panels), independent of any experiment's samples. Samples are only
+  *counted* at the fixed catalog; they never influence which sites exist.
+
+For a synthetic-population design this is the more principled choice: the informative
+SNPs are, by definition, the ones that distinguish the founders — a property of the
+founders, not of any experiment.
+
+**Is the founder-only set as good?** Comparing the two SNP sets **on the founders
+themselves** (no experiment samples): the counts are **comparable** and the **overlap
+is large**. Where they differ:
+
+- **Catalog-only sites** are real founder-segregating SNPs the pooled caller missed —
+  e.g. where a reconstructed founder (B5's chr2L, see `data/founders/FOUNDERS.md`)
+  pollutes the *pooled* call and suppresses sites; the catalog ascertains them cleanly
+  from the other founders. A gain.
+- **Current-only sites** are of two kinds: (1) **monomorphic-in-founders** sites the
+  current `good_SNPs` filter keeps but shouldn't — its segregation test is a no-op
+  (issue #20) — which carry no haplotype information, so dropping them is *correct*;
+  and (2) sites where the founder near-fixation call **disagrees** because the current
+  method reads founders from the *pooled, QUAL-gated* call while the catalog measures
+  each founder **directly** (BAQ-off, genome-wide, on founder depth). Neither is
+  automatically right, but measuring the founders *as founders* is the more defensible
+  measurement.
+
+So the callsets are comparable and largely overlapping, and where they part the
+founder-catalog side is at least as good: it recovers real sites the pool missed and
+drops sites that should not have been kept.
+
+**Speed** (secondary to the argument above, but large). The founders are called **once**
+to build the catalog, then each sample is a small independent count at fixed positions:
+building the catalog runs in a couple of hours (founders only, per chromosome), and each
+sample counts in ~10–15 minutes, fully parallel (one job per sample). The current pooled
+caller re-calls everything together and, on large datasets, took close to **three days**.
+
 ### Two explicit commands: build the catalog, then call samples
 
 A catalog is defined by its **founder set**, so it is a standalone artifact you
