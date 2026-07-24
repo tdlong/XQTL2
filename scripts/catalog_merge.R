@@ -1,31 +1,29 @@
 # catalog_merge.R — merge per-sample catalog counts into drop-in RefAlt.<chr>.txt
 #
-# Part of the PROPOSED parallel REFALT path (see catalog_count.sh). Reads every
-# counts/<sample>.tsv.gz (columns CHROM POS REF_<name> ALT_<name>), joins them on
-# (CHROM,POS) — the catalog already fixes the alleles, so there are no allele
-# columns to key on — fills missing coverage with 0, and writes RefAlt.<chr>.txt
-# in the SAME format the validated pipeline produces (CHROM POS REF_<name>
-# ALT_<name> ...), so REFALT2haps runs unchanged.
+# Part of the PROPOSED founder-catalog caller (a worker driven by call_samples.sh).
+# Reads every <calls dir>/counts/<sample>.tsv.gz (columns CHROM POS REF_<name>
+# ALT_<name>), joins them on (CHROM,POS) — the catalog already fixes the alleles,
+# so there are no allele columns to key on — fills missing coverage with 0, and
+# writes one <calls dir>/RefAlt.<chr>.txt per chromosome, in the SAME format the
+# validated pipeline produces (CHROM POS REF_<name> ALT_<name> ...) so REFALT2haps
+# runs unchanged.
 #
-# Memory: all count files are the SAME catalog sites in the SAME order (each is
-# mpileup -T against the one catalog), so this is really just lining up REF/ALT
-# columns. The whole-genome catalog is <2M SNPs; each sample adds two 4-byte
-# integers = 8 bytes/site (~16 MB/sample), so the full wide table for ~100
-# samples is ~1.6GB. Samples are joined one at a time, keeping peak to ~one copy
-# (~3GB). Standard 6G/core is ample; no highmem, no chromosome subsetting.
+# Memory: all count files are the same catalog sites in the same order, so this
+# just lines up REF/ALT columns. <2M SNPs x ~100 samples x 8 bytes ~= 1.6GB;
+# samples are joined one at a time (peak ~one copy, ~3GB). Standard 6G/core ample.
 #
 # Usage:
-#   Rscript catalog_merge.R <output_dir> [chr1,chr2,...]
+#   Rscript catalog_merge.R <calls dir> [chr1,chr2,...]
 
 suppressPackageStartupMessages(library(data.table))
 
-args   <- commandArgs(trailingOnly = TRUE)
-outdir <- args[1]
-chrs   <- if (length(args) >= 2) strsplit(args[2], ",")[[1]] else c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
+args     <- commandArgs(trailingOnly = TRUE)
+callsdir <- args[1]
+chrs     <- if (length(args) >= 2) strsplit(args[2], ",")[[1]] else c("chrX", "chr2L", "chr2R", "chr3L", "chr3R")
 
-files <- list.files(file.path(outdir, "counts"), pattern = "\\.tsv\\.gz$", full.names = TRUE)
-if (length(files) == 0) stop("no counts/*.tsv.gz in ", outdir)
-key <- c("CHROM", "POS")   # the catalog fixes the alleles; counts are keyed on position
+files <- list.files(file.path(callsdir, "counts"), pattern = "\\.tsv\\.gz$", full.names = TRUE)
+if (length(files) == 0) stop("no counts/*.tsv.gz in ", callsdir)
+key <- c("CHROM", "POS")
 
 # Join one sample at a time; peak memory stays ~one copy of the growing table.
 merged <- NULL
@@ -40,7 +38,7 @@ setorder(merged, CHROM, POS)
 
 for (chr in chrs) {
   sub <- merged[CHROM == chr]
-  f <- file.path(outdir, paste0("RefAlt.", chr, ".txt"))
+  f <- file.path(callsdir, paste0("RefAlt.", chr, ".txt"))
   fwrite(sub, f, sep = "\t")
   cat(sprintf("wrote %s (%d sites, %d samples)\n", f, nrow(sub), length(cc) / 2))
 }
