@@ -27,7 +27,11 @@ chrs <- if (length(args) >= 3) strsplit(args[3], ",")[[1]] else c("chrX", "chr2L
 
 # long format: one row per (POS, sample) with REF/ALT counts and frequency
 to_long <- function(path) {
-  df <- fread(path, header = TRUE)   # RefAlt.<chr>.txt: CHROM POS REF_<s> ALT_<s> ...
+  # bam2bcf2REFALT.sh writes RefAlt with a TAB header but SPACE-separated data;
+  # the catalog caller writes all tabs. Squeeze both to single spaces so fread
+  # reads either format (fread auto-picks one separator and would otherwise
+  # collapse the mixed-whitespace header into a single column).
+  df <- fread(cmd = paste("tr -s '\t ' ' ' <", shQuote(path)), header = TRUE, sep = " ")
   m <- melt(df, id.vars = c("CHROM", "POS"), variable.name = "lab", value.name = "count")
   m[, refalt := substr(lab, 1, 3)]
   m[, sample := substr(lab, 5, nchar(as.character(lab)))]
