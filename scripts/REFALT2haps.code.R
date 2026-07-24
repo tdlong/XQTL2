@@ -166,13 +166,19 @@ df2 = df %>%
 rm(df)
 cat("df2 is now made\n")
 
-# identify SNPs that are NOT problematic in the set of founders
+# identify SNPs that are NOT problematic in the set of founders:
+#   zeros==0     every founder covered
+#   notfixed==0  every founder near-fixed (freq <=0.03 or >=0.97)
+#   segregating  at least one founder REF-fixed (freq>=0.97) AND one ALT-fixed (freq<=0.03)
+# NB: the previous `informative=(sum(freq)>0.05 | sum(freq)<0.95)` was always TRUE
+# (a value can't be both <=0.05 and >=0.95), so it never filtered — it kept
+# monomorphic-in-founder sites that carry no haplotype information (XQTL2 #20).
 good_SNPs = df2 %>%
 	filter(name %in% founders) %>%
 	group_by(CHROM,POS) %>%
-	summarize(zeros=sum(N==0),notfixed=sum(N!=0 & freq > 0.03 & freq < 0.97),informative=(sum(freq)>0.05 | sum(freq) < 0.95)) %>%
+	summarize(zeros=sum(N==0),notfixed=sum(N!=0 & freq > 0.03 & freq < 0.97),segregating=(sum(N!=0 & freq <= 0.03) > 0 & sum(N!=0 & freq >= 0.97) > 0)) %>%
 	ungroup() %>%
-	filter(zeros==0 & notfixed==0 & informative=="TRUE") %>%
+	filter(zeros==0 & notfixed==0 & segregating) %>%
 	select(c(CHROM,POS))
 
 # now subset the entire dataset for the good SNPs only
