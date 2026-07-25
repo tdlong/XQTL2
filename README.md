@@ -1074,12 +1074,22 @@ A biallelic SNP is kept if, **across the founders**:
    (0.97); no founder sits in between.
 3. **Polymorphic** — at least one founder is fixed for REF *and* at least one is fixed
    for ALT (so it is not the case that all founders are ≥0.97, nor all ≤0.03).
-4. **Clean** — biallelic and not within `--snpgap` bp (5) of a founder indel.
+4. **Clean** — biallelic and at least `--snpgap` bp (default 25) from a founder indel.
 
-Everything is genome-wide (heterochromatin not censored); thresholds are tunable.
-The build also writes `catalog.stats.txt` — a per-rule tally (candidate SNPs, how
-many each rule drops, how many kept) — so the thresholds' effect on catalog size
-is visible, not a mystery.
+Everything is genome-wide (heterochromatin not censored). `catalog.stats.txt` is a
+per-rule tally (candidate SNPs, how many each rule drops, how many kept) so the
+thresholds' effect on catalog size is visible.
+
+**Annotate once, threshold downstream (no rebuild).** The founder calling (the
+slow part) produces `catalog.annot.tsv.gz` — *every* candidate biallelic SNP with
+the annotations the rules are decided on: distance to the nearest founder indel and
+per-founder allelic depth. `catalog_filter.sh` then applies the thresholds
+(`--min-dp`, `--maxaf`, `--snpgap`, `--exempt-founders`) to produce the
+`catalog.tsv.gz` positions file. So changing a threshold — e.g. `--snpgap 25` vs `5`
+— is a *re-cut of the annotated table in seconds*, not an hours-long recall of the
+founders; and every SNP's in/out is auditable from its annotations. (The `snpgap 5`
+default was too tight — indel disturbance reaches ~50 bp — so the default is now 25;
+the right value is best *measured* from the distance-to-indel annotation.)
 
 **Exempt founders (`--exempt-founders`, default `B5:chr2L`).** An exempt founder is
 dropped from rules 1–3 *as if it were not a founder* — the rules apply to the
@@ -1167,8 +1177,15 @@ a fixed catalog — and merges into `RefAlt.<chr>.txt`.
 Their counts land next to the existing ones and everything is re-merged; you count
 exactly what you list.
 
+To re-cut thresholds on an existing catalog without rebuilding, run the filter
+alone:
+```bash
+sbatch pipeline/scripts/catalog_filter.sh --catdir process/<project>/Catalog --snpgap 40
+```
+
 Scripts: `build_catalog.sh` / `call_samples.sh` (the two commands),
-`catalog_build.sh` + `catalog_gather.sh` (build workers), `catalog_count.sh` +
+`catalog_build.sh` + `catalog_gather.sh` + `catalog_filter.sh` (build workers;
+`catalog_filter.sh` is also the standalone re-cut), `catalog_count.sh` +
 `catalog_merge.R` (call workers), `compare_refalt_calls.R` (evaluation).
 
 ### Project layout
@@ -1178,7 +1195,8 @@ One population per project → one catalog. Outputs go in stage folders:
 ```
 process/<project>/
 ├── Catalog/                       built by build_catalog.sh
-│   ├── catalog.tsv.gz (+ .tbi)
+│   ├── catalog.annot.tsv.gz       all candidate SNPs + annotations (re-cuttable source)
+│   ├── catalog.tsv.gz (+ .tbi)    the -T positions file under the chosen thresholds
 │   ├── founders.bams.txt          the founder set that defined it
 │   └── catalog.stats.txt          per-rule SNP tally
 └── Calls/                         written by call_samples.sh
