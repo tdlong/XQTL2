@@ -1073,8 +1073,11 @@ changing anything — it is the core of how the caller works.
 **Step 1 — make the catalog (`catalog.annot.tsv.gz`).** Call the founders and keep
 every biallelic SNP they show. The only filtering here is on the reads:
 
-- mapping quality ≥ 20, base quality ≥ 20, BAQ off
+- mapping quality ≥ 20, base quality ≥ 20, **BAQ on**
 - keep 2-allele (biallelic) SNPs only
+
+BAQ is **on** here because this is discovery — deciding whether a founder SNP is
+real — and BAQ suppresses false SNPs near indels (matches the validated caller).
 
 Each SNP is stored with its per-founder read counts and its distance to the nearest
 founder indel. This is the slow step (calling the founders), done once.
@@ -1098,12 +1101,14 @@ SNPs each filter dropped. (`snpgap 5` was too tight — indel disturbance reache
 distance annotation.)
 
 **Step 3 — count the samples.** At each filtered-catalog position, count REF vs ALT
-reads in the sample, with the same read filters (mapping quality ≥ 20, base quality
-≥ 20, BAQ off) and **no genotype model** — these are pooled samples, so we count
+reads in the sample, with the read filters mapping quality ≥ 20, base quality ≥ 20,
+**BAQ off**, and **no genotype model** — these are pooled samples, so we count
 reads, we do not genotype (XQTL2 #22).
 
-**BAQ is off in all three steps.** The catalog's selectivity comes entirely from the
-Step-2 founder filters, not from BAQ.
+**BAQ: on for discovery (Step 1), off for counting (Step 3).** Discovery decides
+whether a SNP is real, where BAQ's suppression of indel-adjacent false SNPs helps;
+counting just tallies reads at known-good sites, where BAQ would only cost real
+reads. The Step-2 founder filters do the rest of the selecting.
 
 **Exempt founders (`--exempt-founders`, default `B5:chr2L`).** An exempt founder is
 dropped from the Step-2 founder filters *as if it were not a founder* — those filters
