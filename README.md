@@ -1065,35 +1065,50 @@ catalog sites. Counting is deterministic — BAQ off (`-B`) and alleles fixed by
 or on which other samples are in the run. The result is drop-in `RefAlt.<chr>.txt`,
 so REFALT2haps and the scans run unchanged.
 
-### How a SNP gets into the catalog
+### From reads to a SNP list: two filters, then counting
 
-A biallelic SNP is kept if, **across the founders**:
+There are two SNP lists and three points where filtering happens. Read this before
+changing anything — it is the core of how the caller works.
 
-1. **Coverage** — every founder has at least `--min-dp` reads (default 10).
-2. **Near-fixed** — every founder's ALT frequency is ≤ `--maxaf` (0.03) or ≥ `1 − maxaf`
-   (0.97); no founder sits in between.
-3. **Polymorphic** — at least one founder is fixed for REF *and* at least one is fixed
-   for ALT (so it is not the case that all founders are ≥0.97, nor all ≤0.03).
-4. **Clean** — biallelic and at least `--snpgap` bp (default 25) from a founder indel.
+**Step 1 — make the catalog (`catalog.annot.tsv.gz`).** Call the founders and keep
+every biallelic SNP they show. The only filtering here is on the reads:
 
-Everything is genome-wide (heterochromatin not censored). `catalog.stats.txt` is a
-per-rule tally (candidate SNPs, how many each rule drops, how many kept) so the
-thresholds' effect on catalog size is visible.
+- mapping quality ≥ 20, base quality ≥ 20, BAQ off
+- keep 2-allele (biallelic) SNPs only
 
-**Annotate once, threshold downstream (no rebuild).** The founder calling (the
-slow part) produces `catalog.annot.tsv.gz` — *every* candidate biallelic SNP with
-the annotations the rules are decided on: distance to the nearest founder indel and
-per-founder allelic depth. `catalog_filter.sh` then applies the thresholds
-(`--min-dp`, `--maxaf`, `--snpgap`, `--exempt-founders`) to produce the
-`catalog.tsv.gz` positions file. So changing a threshold — e.g. `--snpgap 25` vs `5`
-— is a *re-cut of the annotated table in seconds*, not an hours-long recall of the
-founders; and every SNP's in/out is auditable from its annotations. (The `snpgap 5`
-default was too tight — indel disturbance reaches ~50 bp — so the default is now 25;
-the right value is best *measured* from the distance-to-indel annotation.)
+Each SNP is stored with its per-founder read counts and its distance to the nearest
+founder indel. This is the slow step (calling the founders), done once.
+
+**Step 2 — make the filtered catalog (`catalog.tsv.gz`, the list the samples are
+called against).** Keep a SNP from the catalog only if:
+
+- every founder has ≥ `--min-dp` reads (default **10**)
+- every founder is nearly all one allele — ALT fraction ≤ `--maxaf` or ≥ 1−maxaf
+  (default **0.03 / 0.97**)
+- the SNP actually differs between founders — at least one founder mostly REF and at
+  least one mostly ALT
+- it is ≥ `--snpgap` bp from a founder indel (default **25**)
+- (B5 is ignored on chr2L — see `--exempt-founders` below)
+
+`catalog_filter.sh` applies these from the counts and distances already stored in
+Step 1, so changing a threshold (e.g. `--snpgap 25` vs `5`) is a **re-cut in
+seconds**, not an hours-long founder recall. `catalog.stats.txt` reports how many
+SNPs each filter dropped. (`snpgap 5` was too tight — indel disturbance reaches
+~50 bp — so the default is now 25; the right value is best *measured* from the
+distance annotation.)
+
+**Step 3 — count the samples.** At each filtered-catalog position, count REF vs ALT
+reads in the sample, with the same read filters (mapping quality ≥ 20, base quality
+≥ 20, BAQ off) and **no genotype model** — these are pooled samples, so we count
+reads, we do not genotype (XQTL2 #22).
+
+**BAQ is off in all three steps.** The catalog's selectivity comes entirely from the
+Step-2 founder filters, not from BAQ.
 
 **Exempt founders (`--exempt-founders`, default `B5:chr2L`).** An exempt founder is
-dropped from rules 1–3 *as if it were not a founder* — the rules apply to the
-remaining founders — but its REF/ALT counts are still written to `RefAlt`. The
+dropped from the Step-2 founder filters *as if it were not a founder* — those filters
+apply to the remaining founders — but its REF/ALT counts are still written to
+`RefAlt`. The
 default exempts **B5 on chr2L only**: B5's chr2L reads were required to map exactly
 to an ALT-only reference (see `data/founders/FOUNDERS.md`), so B5 is non-polymorphic
 there *by construction* and the rules do not apply to it; B5 is a normal founder on
