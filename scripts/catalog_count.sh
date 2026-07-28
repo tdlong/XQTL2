@@ -57,9 +57,15 @@ out="${callsdir}/counts/${name}.tsv.gz"
 # AD from mpileup is [REF, <first ALT>, <*>]; for a clean biallelic catalog SNP the
 # first ALT is the catalog ALT (or 0 when the sample has no ALT reads). Merge keys
 # on (CHROM,POS) only, so no genotype step is needed to keep alleles consistent.
+#
+# -I (--skip-indels): without it, at a catalog SNP where the sample also carries an
+# indel, mpileup emits BOTH a SNP record and an indel record at the same POS, so the
+# count file has duplicate positions and the merge cartesian-explodes (XQTL2 #27).
+# -I suppresses indel *calling* only; the reads piled at the SNP (its REF/ALT depths)
+# are unchanged. The validated bam2bcf2REFALT.sh does the same.
 {
   printf 'CHROM\tPOS\tREF_%s\tALT_%s\n' "$name" "$name"
-  bcftools mpileup -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \
+  bcftools mpileup -I -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \
       -f "$ref" "$bam" -Ou \
     | bcftools query -f '%CHROM\t%POS[\t%AD]\n' \
     | awk -F'\t' -v OFS='\t' '{ split($3,a,","); print $1,$2,(a[1]==""||a[1]=="."?0:a[1]),(a[2]==""||a[2]=="."?0:a[2]) }'
