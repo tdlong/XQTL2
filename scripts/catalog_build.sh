@@ -2,10 +2,11 @@
 #SBATCH --job-name=catalog_build
 #SBATCH -A tdlong_lab
 #SBATCH -p standard
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=6G
 #SBATCH --time=08:00:00
 # One CHROMOSOME per array task (--array=1-5). Submitted by build_catalog.sh.
+# 1 core: mpileup | call is serial (seff: 50% CPU on 2 cores, ~100 MB, ~4h wall).
 
 # catalog_build.sh — annotate one chromosome's candidate founder SNPs.
 #
@@ -24,7 +25,7 @@
 set -euo pipefail
 
 REF=pipeline/ref/dm6.fa
-THREADS=2
+THREADS=1   # mpileup | call is serial; a second thread buys nothing here
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -66,8 +67,19 @@ bcftools view -v indels "$raw" | bcftools query -f '%POS\n' | sort -n > "$indels
 # Every candidate biallelic SNP + per-founder AD, annotated with distance to the
 # nearest founder indel (two-pointer over the sorted indel list; input is
 # coordinate-sorted so the pointer only advances).
+#
+# Drop MULTIALLELIC positions: a site with >1 ALT in the founders splits (norm -m -)
+# into several biallelic rows at the same POS. The counter is pooled REF-vs-ALT and
+# undefined there, and two rows at one POS make catalog_merge.R cartesian-explode
+# (XQTL2 #24). The first awk keeps only positions whose (CHROM,POS) appears exactly
+# once (input is coordinate-sorted, so duplicates are adjacent).
 bcftools view -m2 -M2 -v snps "$raw" \
   | bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%AD]\n' \
+  | awk -F'\t' '
+    { key = $1 SUBSEP $2
+      if (key != pk) { if (pk != "" && cnt == 1) print pr; pk = key; pr = $0; cnt = 1 }
+      else cnt++ }
+    END { if (pk != "" && cnt == 1) print pr }' \
   | awk -F'\t' -v OFS='\t' -v indelfile="$indels" '
     BEGIN { ni = 0; while ((getline p < indelfile) > 0) ind[++ni] = p + 0; j = 1 }
     {

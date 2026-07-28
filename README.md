@@ -1229,6 +1229,23 @@ project. Moving `Haps/` and `Scans/` into stage folders too is a later step — 
 now only this caller uses the new layout, and the validated haps/scan steps are
 untouched.
 
+### Resources
+
+Sized from `seff` on real AGE_SY runs where marked — every step is **1 core** (the
+`mpileup`/`call`/join work is serial), on the `standard` partition (6 GB/core):
+
+| step | script | cores | mem/core | wall | basis |
+|------|--------|-------|----------|------|-------|
+| build (per chromosome, ×5) | `catalog_build.sh` | 1 | 6G | ~4 h | seff: 50% CPU on 2 cores, ~100 MB used |
+| gather | `catalog_gather.sh` | 1 | 6G | minutes | small (concatenate) |
+| filter / re-cut | `catalog_filter.sh` | 1 | 6G | minutes | small (scan the annotated table) |
+| count (per sample, ×N) | `catalog_count.sh` | 1 | 6G | 2–11 min | seff: ~270 MB used |
+| merge | `call_samples.sh` (wrap) | 1 | 6G | <1 h | join is <3 GB for ~100 samples; scales with #samples — bump `--mem-per-cpu` only if it OOMs |
+
+Memory is comfortably under 6 GB everywhere; the only step whose footprint grows
+with the project is the merge (one wide table over all samples), so that's the one
+to watch and re-measure as sample counts climb.
+
 ### The test
 
 Evaluated against the current pipeline on the same project. Because `RefAlt` is the

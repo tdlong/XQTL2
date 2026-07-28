@@ -62,7 +62,7 @@ JID_COUNT=$(sbatch --parsable ${DEP} \
 
 # 2. Merge every counts/*.tsv.gz into drop-in RefAlt.<chr>.txt.
 JID_MERGE=$(sbatch --parsable --dependency=afterok:${JID_COUNT} \
-    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=2 --mem-per-cpu=6G --time=02:00:00 \
+    -A ${ACCOUNT} -p ${PARTITION} --cpus-per-task=1 --mem-per-cpu=6G --time=02:00:00 \
     --wrap="module load R/4.2.2; Rscript pipeline/scripts/catalog_merge.R ${CALLSDIR}")
 
 echo "${JID_MERGE}"
