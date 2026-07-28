@@ -1246,6 +1246,21 @@ Memory is comfortably under 6 GB everywhere; the only step whose footprint grows
 with the project is the merge (one wide table over all samples), so that's the one
 to watch and re-measure as sample counts climb.
 
+### Rerun impact (what a change costs)
+
+Because the catalog is "annotate once, filter downstream," a change costs very
+different amounts depending on which stage it touches:
+
+| you change… | rerun needed | cost |
+|-------------|--------------|------|
+| a threshold / position filter — `--min-dp`, `--maxaf`, `--snpgap`, `--exempt-founders`, multiallelic drop | `catalog_filter.sh` on the existing `catalog.annot.tsv.gz` | **seconds** (no founder recall) |
+| what reads/alleles the founders are called with — BAQ, `-q`/`-Q`, reference | `build_catalog.sh` (recall the founders) → filter | **~4 h** per chromosome |
+| the sample set or the counting reads | `call_samples.sh` (count the BAMs) → merge | minutes per new sample |
+
+Rule of thumb: anything that only *re-decides which annotated positions to keep* is a
+`catalog_filter.sh` re-cut; anything that changes *how the founders were read* is a
+full rebuild. Commit messages for catalog fixes state which kind they are.
+
 ### The test
 
 Evaluated against the current pipeline on the same project. Because `RefAlt` is the
