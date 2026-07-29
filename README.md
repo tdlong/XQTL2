@@ -1198,15 +1198,15 @@ called against).** Keep a SNP from the catalog only if:
   (default **0.03 / 0.97**)
 - the SNP actually differs between founders — at least one founder mostly REF and at
   least one mostly ALT
-- it is ≥ `--snpgap` bp from a founder indel (default **25**)
+- it is ≥ `--snpgap` bp from a founder indel (default **20**)
 - (B5 is ignored on chr2L — see `--exempt-founders` below)
 
 `catalog_filter.sh` applies these from the counts and distances already stored in
 Step 1, so changing a threshold (e.g. `--snpgap 25` vs `5`) is a **re-cut in
 seconds**, not an hours-long founder recall. `catalog.stats.txt` reports how many
 SNPs each filter dropped. (`snpgap 5` was too tight — indel disturbance reaches
-~50 bp — so the default is now 25; the right value is best *measured* from the
-distance annotation.)
+~50 bp — so the default is now 20, from the AGE_SY indel-distance sweep (#28); the
+right value is best *measured* from the distance annotation.)
 
 **Step 3 — count the samples.** At each filtered-catalog position, count REF vs ALT
 reads in the sample, with the read filters mapping quality ≥ 20, base quality ≥ 20,
