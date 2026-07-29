@@ -49,3 +49,4 @@ pipeline
 # one-off cluster state output
 check_cluster_state.out.txt
 *.DS_Store
+helpfiles/FREQ_SNPs_*.cM.txt.gz
