@@ -1202,7 +1202,7 @@ called against).** Keep a SNP from the catalog only if:
 - (B5 is ignored on chr2L — see `--exempt-founders` below)
 
 `catalog_filter.sh` applies these from the counts and distances already stored in
-Step 1, so changing a threshold (e.g. `--snpgap 25` vs `5`) is a **re-cut in
+Step 1, so changing a threshold (e.g. `--snpgap 40` vs `5`) is a **re-cut in
 seconds**, not an hours-long founder recall. `catalog.stats.txt` reports how many
 SNPs each filter dropped. (`snpgap 5` was too tight — indel disturbance reaches
 ~50 bp — so the default is now 20, from the AGE_SY indel-distance sweep (#28); the
