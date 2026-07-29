@@ -23,6 +23,6 @@ done
 
 Rscript pipeline/scripts/hap_scan.R \
     --chr     "${mychr}"  \
-    --dir     "${DIR}/${OUTDIR}" \
+    --dir     "${DIR}/Scans/${OUTDIR}" \
     --outdir  "${OUTDIR}" \
     --rfile   "${RFILE}"

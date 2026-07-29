@@ -48,7 +48,8 @@ mychr     <- parsed$chr
 smooth_kb <- parsed$smooth_kb
 design.df <- read.table(parsed$rfile, header = TRUE)
 
-dirout        <- file.path(parsed$dir, parsed$outdir)
+# Stage layout: scans go under Scans/<scan> (see reorganize_project.sh).
+dirout        <- file.path(parsed$dir, "Scans", parsed$outdir)
 fileout_rds   <- file.path(dirout, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout_means <- file.path(dirout, paste0(parsed$outdir, ".meansBySample.", mychr, ".txt"))
 dir.create(dirout, showWarnings = FALSE, recursive = TRUE)
@@ -129,7 +130,7 @@ fill_gaps <- function(x, h) {
 }
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-filein <- file.path(parsed$dir, paste0("R.haps.", mychr, ".out.rds"))
+filein <- file.path(parsed$dir, "Haps", paste0("R.haps.", mychr, ".out.rds"))
 cat("Reading", filein, "\n")
 xx1 <- readRDS(filein)
 

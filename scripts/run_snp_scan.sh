@@ -55,7 +55,7 @@ if [[ -n "$missing" ]]; then
     exit 1
 fi
 
-OUTDIR=${DIR}/${SCAN}
+OUTDIR=${DIR}/Scans/${SCAN}     # stage layout: scans under Scans/ (see reorganize_project.sh)
 
 # ── Build dependency ─────────────────────────────────────────────────────────
 DEP=""

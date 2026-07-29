@@ -25,7 +25,7 @@ done
 
 Rscript pipeline/scripts/snp_scan.R \
     --chr        "${mychr}"     \
-    --dir        "${DIR}/${OUTDIR}" \
+    --dir        "${DIR}/Scans/${OUTDIR}" \
     --outdir     "${OUTDIR}"    \
     --rfile      "${RFILE}"     \
     --snp-table  "${SNP_TABLE}" \

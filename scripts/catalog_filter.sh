@@ -30,7 +30,7 @@ set -euo pipefail
 
 MIN_DP=10
 MAXAF=0.03
-SNPGAP=25          # #21: 5 was too tight (indel disturbance reaches ~50bp); measure and tune
+SNPGAP=20          # default from the AGE_SY indel-distance sweep (#28); tune per data
 EXEMPT="B5:chr2L"
 
 while [[ $# -gt 0 ]]; do

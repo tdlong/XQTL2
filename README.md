@@ -259,6 +259,14 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 ## Step 3 — Generate REFALT counts (bam to REFALT)
 
+> **The default SNP caller is the founder-catalog caller** — `build_catalog.sh`
+> (build a SNP catalog from the founders once) then `call_samples.sh` (count each
+> sample against it). It writes `Calls/RefAlt.<chr>.txt`, which the rest of the
+> pipeline reads. Full instructions, rules, resources, and rerun-impact are in the
+> **"Founder-catalog caller"** appendix at the end of this README. The steps below
+> describe the **legacy** joint QUAL caller (`bam2bcf2REFALT.sh` / `run_refalt.sh`),
+> kept for reproducing older analyses; new projects should use the catalog caller.
+
 Create `helpfiles/<project>/bam_list.txt` — one BAM path per line, sample BAMs
 first, then founders. Build a draft from your BAM directory, append founders,
 then **review it** before submitting.
@@ -984,12 +992,25 @@ LongLab-XQTL/                   ← your project repo (any name)
 ├── data/
 │   ├── raw/<project>/          (not tracked)
 │   └── bam/<project>/          (not tracked)
-└── process/<project>/          (not tracked)
-    ├── RefAlt.<chr>.txt
-    ├── R.haps.<chr>.rds
-    └── <scan_name>/
-        ├── <scan_name>.scan.txt
-        └── <scan_name>.tar.gz
+└── process/<project>/          (not tracked) — organized into stage subfolders
+    ├── Catalog/                 SNP catalog (founder-catalog caller)
+    │   ├── catalog.annot.tsv.gz
+    │   └── catalog.tsv.gz
+    ├── Calls/                   the ref/alt step
+    │   ├── counts/<sample>.tsv.gz
+    │   └── RefAlt.<chr>.txt
+    ├── Haps/                    R.haps.<chr>.rds
+    └── Scans/
+        └── <scan_name>/
+            ├── <scan_name>.scan.txt
+            └── <scan_name>.tar.gz
+```
+
+Projects created before this layout have `RefAlt.*`, `R.haps.*`, and `<scan_name>/`
+flat in `process/<project>/`. Migrate one in place (no recompute) with:
+
+```bash
+bash pipeline/scripts/reorganize_project.sh process/<project>
 ```
 
 To check what exists for a project on the cluster:
@@ -1044,12 +1065,15 @@ promoted to replace `bam2bcf2REFALT.sh` / `run_refalt.sh`. Tune the tiling with
 
 ---
 
-## Appendix — Proposed founder-catalog caller (under evaluation)
+## Appendix — Founder-catalog caller (the default)
 
-> **Status: candidate, not yet adopted.** The validated Step 3 caller
-> (`bam2bcf2REFALT.sh` / `run_refalt.sh`) and the downstream steps are unchanged.
-> This is a *different* way to build the ref/alt table, evaluated against the
-> current one on quality, not byte-identity.
+> **Status: default caller.** Validated end-to-end against the legacy QUAL caller
+> on AGE_SY (SNP counts → per-SNP frequency → haplotype scan): it reproduces the
+> legacy scan's QTL peaks with slightly more power (recovers chr2L SNPs the joint
+> caller missed; no rare-allele loss). The legacy `bam2bcf2REFALT.sh` /
+> `run_refalt.sh` remain available for reproducing older analyses. Output uses the
+> `Calls/Haps/Scans` stage layout; migrate a pre-layout project with
+> `reorganize_project.sh`.
 
 **Why.** The current caller joint-calls every BAM and keeps SNPs on `QUAL>59`.
 `QUAL` is a joint-cohort, diploid-model statistic that shifts with interval spec,
@@ -1204,6 +1228,7 @@ sbatch pipeline/scripts/catalog_filter.sh --catdir process/<project>/Catalog --s
 ```
 
 Scripts: `build_catalog.sh` / `call_samples.sh` (the two commands),
+`reorganize_project.sh` (migrate a pre-layout project to `Calls/Haps/Scans`),
 `catalog_build.sh` + `catalog_gather.sh` + `catalog_filter.sh` (build workers;
 `catalog_filter.sh` is also the standalone re-cut), `catalog_count.sh` +
 `catalog_merge.R` (call workers), `compare_refalt_calls.R` (evaluation).

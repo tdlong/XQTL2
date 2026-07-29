@@ -50,7 +50,7 @@ if [[ -n "$missing" ]]; then
     exit 1
 fi
 
-OUTDIR=${DIR}/${SCAN}
+OUTDIR=${DIR}/Scans/${SCAN}     # stage layout: scans under Scans/ (see reorganize_project.sh)
 mkdir -p "${OUTDIR}"
 
 # ── Build dependency for smooth step ─────────────────────────────────────────
@@ -72,7 +72,7 @@ echo "smooth:   $jid_smooth"
 jid_r2=$(sbatch --parsable --dependency=afterok:${jid_smooth} \
     -A ${ACCOUNT} \
     pipeline/scripts/smooth_r2_diag.sh \
-    --hapsdir   "${DIR}" \
+    --hapsdir   "${DIR}/Haps" \
     --smoothdir "${OUTDIR}" \
     --scan      "${SCAN}" \
     --rfile     "${DESIGN}" \
