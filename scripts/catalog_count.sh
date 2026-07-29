@@ -62,7 +62,7 @@ out="${callsdir}/counts/${name}.tsv.gz"
 # indel, mpileup emits BOTH a SNP record and an indel record at the same POS, so the
 # count file has duplicate positions and the merge cartesian-explodes (XQTL2 #27).
 # -I suppresses indel *calling* only; the reads piled at the SNP (its REF/ALT depths)
-# are unchanged. The validated bam2bcf2REFALT.sh does the same.
+# are unchanged. The legacy scripts/legacy/bam2bcf2REFALT.sh did the same.
 {
   printf 'CHROM\tPOS\tREF_%s\tALT_%s\n' "$name" "$name"
   bcftools mpileup -I -B -q 20 -Q 20 --max-depth 2000 -T "$cat" -a FORMAT/AD \

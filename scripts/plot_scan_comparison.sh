@@ -8,8 +8,8 @@
 
 # Run from XQTL2-dev root:
 #   sbatch pipeline/scripts/plot_scan_comparison.sh \
-#       --unsmoothed process/ZINC2/ZINC2_F_unsmoothed/ZINC2_F_unsmoothed.scan.txt \
-#       --smoothed   process/ZINC2/ZINC2_F_v4/ZINC2_F_v4.scan.txt \
+#       --unsmoothed process/ZINC2/Scans/ZINC2_F_unsmoothed/ZINC2_F_unsmoothed.scan.txt \
+#       --smoothed   process/ZINC2/Scans/ZINC2_F_v4/ZINC2_F_v4.scan.txt \
 #       --chr        chr2L \
 #       --out        process/ZINC2/scan_comparison_chr2L.png
 

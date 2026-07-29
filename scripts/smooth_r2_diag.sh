@@ -8,11 +8,11 @@
 
 # Run from your project directory:
 #   sbatch pipeline/scripts/smooth_r2_diag.sh \
-#       --hapsdir   process/ZINC2 \
-#       --smoothdir process/ZINC2/ZINC2_F_v3 \
+#       --hapsdir   process/ZINC2/Haps \
+#       --smoothdir process/ZINC2/Scans/ZINC2_F_v3 \
 #       --scan      ZINC2_F_v3 \
 #       --rfile     helpfiles/ZINC2/Zinc2.test.F.N13.txt \
-#       --out       process/ZINC2/ZINC2_F_v3/smooth_r2_diag.txt
+#       --out       process/ZINC2/Scans/ZINC2_F_v3/smooth_r2_diag.txt
 
 while [[ $# -gt 0 ]]; do
   case $1 in

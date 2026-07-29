@@ -27,7 +27,7 @@ output=$1
 W=${2:-5000000}
 PAD=${3:-10000}
 
-tiles=$(bash pipeline/scripts/make_tiles.sh "${ref}.fai" "$W" "$PAD")
+tiles=$(bash pipeline/scripts/legacy/make_tiles.sh "${ref}.fai" "$W" "$PAD")
 
 # unique chromosomes, in first-seen (genomic) order
 for chr in $(echo "$tiles" | awk '!seen[$2]++ {print $2}'); do

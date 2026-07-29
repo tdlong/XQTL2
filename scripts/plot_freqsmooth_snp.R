@@ -4,14 +4,14 @@
 #
 # Usage:
 #   Rscript scripts/plot_freqsmooth_snp.R \
-#       --scan  process/proj/SCAN/SCAN.snp_scan.txt \
-#       --out   process/proj/SCAN/snp_wald.png \
+#       --scan  process/proj/Scans/SCAN/SCAN.snp_scan.txt \
+#       --out   process/proj/Scans/SCAN/snp_wald.png \
 #       --format powerpoint
 #
 # Multi-scan overlay:
 #   Rscript scripts/plot_freqsmooth_snp.R \
-#       --scan process/proj/SCAN_M/SCAN_M.snp_scan.txt \
-#       --scan process/proj/SCAN_F/SCAN_F.snp_scan.txt \
+#       --scan process/proj/Scans/SCAN_M/SCAN_M.snp_scan.txt \
+#       --scan process/proj/Scans/SCAN_F/SCAN_F.snp_scan.txt \
 #       --label Male --label Female \
 #       --colour "#1F78B4" --colour "#E31A1C" \
 #       --out overlay.png --format powerpoint

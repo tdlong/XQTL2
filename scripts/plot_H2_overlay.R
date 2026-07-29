@@ -4,8 +4,8 @@
 #
 # Usage:
 #   Rscript scripts/plot_H2_overlay.R \
-#       --scan   process/proj/SCAN/SCAN.scan.txt \
-#       --out    process/proj/SCAN/H2.png \
+#       --scan   process/proj/Scans/SCAN/SCAN.scan.txt \
+#       --out    process/proj/Scans/SCAN/H2.png \
 #       --format powerpoint
 #
 # Optional:

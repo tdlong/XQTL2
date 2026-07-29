@@ -52,8 +52,8 @@ indels="${CATDIR}/work/indels.${mychr}.txt"
 
 # Call the founders on this chromosome, split multiallelics. This is DISCOVERY, so
 # BAQ is ON (no -B): it suppresses false SNPs near indels, exactly what deciding
-# whether a founder SNP is real should do (XQTL2 #23; matches the validated
-# bam2bcf2REFALT.sh, which also leaves BAQ on). Counting samples is the opposite
+# whether a founder SNP is real should do (XQTL2 #23; matches the legacy
+# scripts/legacy/bam2bcf2REFALT.sh, which also left BAQ on). Counting samples is the opposite
 # case and stays BAQ-off (catalog_count.sh, #22). No SnpGap filter here — near-indel
 # SNPs are kept and annotated by distance instead.
 bcftools mpileup -q 20 -Q 20 --max-depth 1000 -a FORMAT/AD,FORMAT/DP \

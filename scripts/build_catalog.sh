@@ -1,7 +1,8 @@
 #!/bin/bash
 # build_catalog.sh — build a founder SNP catalog (the "database").
 #
-# PROPOSED founder-catalog caller (separate from the validated bam2bcf2REFALT.sh).
+# Stage 1 of the DEFAULT SNP caller (the founder-catalog caller); call_samples.sh
+# is stage 2. The superseded joint QUAL caller is in scripts/legacy/.
 # A catalog is defined by its FOUNDER SET; build one per population and point
 # call_samples.sh at whichever you need. Building is a deliberate, explicit act,
 # SEPARATE from calling samples: running this (re)builds the catalog and OVERWRITES

@@ -15,7 +15,7 @@
 # are its output), so downstream jobs can --after it.
 #
 # Usage:
-#   JID=$(bash pipeline/scripts/run_refalt.tiled.sh \
+#   JID=$(bash pipeline/scripts/legacy/run_refalt.tiled.sh \
 #       --bamlist helpfiles/<project>/bam_list.txt \
 #       --dir     process/<project>_tiled)
 
@@ -55,7 +55,7 @@ DEP=""
 mkdir -p "${DIR}"
 
 # Number of tiles = number of array tasks (single source of truth: make_tiles.sh).
-NTILES=$(bash pipeline/scripts/make_tiles.sh "${REF}.fai" "$WINDOW" "$PAD" | wc -l | tr -d ' ')
+NTILES=$(bash pipeline/scripts/legacy/make_tiles.sh "${REF}.fai" "$WINDOW" "$PAD" | wc -l | tr -d ' ')
 [[ "$NTILES" -ge 1 ]] || { echo "Error: no tiles produced from ${REF}.fai" >&2; exit 1; }
 
 # Scatter: one tile per array task.
@@ -63,14 +63,14 @@ JID_SCATTER=$(sbatch --parsable ${DEP} \
     -A ${ACCOUNT} -p ${PARTITION} \
     --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
     --time=1-00:00:00 --array=1-${NTILES} \
-    pipeline/scripts/bam2bcf2REFALT.tiled.sh \
+    pipeline/scripts/legacy/bam2bcf2REFALT.tiled.sh \
     "${BAMLIST}" "${DIR}" "${WINDOW}" "${PAD}" \
     | cut -d_ -f1)
 
 # Gather: reassemble per-chromosome tables once every tile succeeds.
 JID_GATHER=$(sbatch --parsable --dependency=afterok:${JID_SCATTER} \
     -A ${ACCOUNT} -p ${PARTITION} \
-    pipeline/scripts/reassemble_refalt.sh \
+    pipeline/scripts/legacy/reassemble_refalt.sh \
     "${DIR}" "${WINDOW}" "${PAD}")
 
 # Downstream should wait on the reassembly (it produces RefAlt.<chr>.txt).

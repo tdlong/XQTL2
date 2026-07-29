@@ -39,7 +39,7 @@ PAD=${4:-10000}     # padding added to each side for calling (bp)
 
 # Select this task's tile. make_tiles.sh is deterministic, so this row matches
 # the one the wrapper used to size the array.
-row=$(bash pipeline/scripts/make_tiles.sh "${ref}.fai" "$W" "$PAD" \
+row=$(bash pipeline/scripts/legacy/make_tiles.sh "${ref}.fai" "$W" "$PAD" \
         | awk -v i="$SLURM_ARRAY_TASK_ID" '$1 == i')
 [[ -z "$row" ]] && { echo "No tile for array index $SLURM_ARRAY_TASK_ID" >&2; exit 1; }
 read -r idx chr cstart cend pstart pend <<< "$row"

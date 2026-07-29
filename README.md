@@ -16,7 +16,7 @@ a companion package for interactive graphical analysis of scan results.
 
 1. Get raw reads
 2. Align reads (`fq2bam.sh`)
-3. Generate allele counts (`bam2bcf2REFALT.sh`)
+3. Generate allele counts (`build_catalog.sh` once, then `call_samples.sh`)
 4. Call haplotypes (`REFALT2haps.sh`)
 5. Scan
    - 5a. Haplotype scan (`run_scan.sh` — smooth, Wald test, H², concat)
@@ -188,7 +188,8 @@ effective replicates, 4 samples). Larger experiments scale proportionally.
 | Script | Step | Partition | CPUs | Mem/CPU | Time | Profiled (malathion) |
 |--------|------|-----------|------|---------|------|----------------------|
 | `fq2bam.sh` | 2 | standard | 4 | 6G | 1 day | `bwa -t 4`; `java -Xmx20g` needs ~20G total |
-| `bam2bcf2REFALT.sh` | 3 | standard | 2 | 6G | 5 days | bcftools mpileup, I/O-bound |
+| `catalog_build.sh` (×5 chr) | 3 | standard | 1 | 6G | ~4 hr | founder calling; once per catalog |
+| `catalog_count.sh` (×N samples) | 3 | standard | 1 | 6G | 2–11 min | one job per sample at a fixed catalog |
 | `REFALT2haps.sh` | 4 | highmem | 1 | 10G | 1 day | large haplotype matrices require highmem |
 | `smooth_haps.sh` | 5a | highmem | 1 | 10G | 4 hr | covariance uncount(64) needs ~8G on large chromosomes |
 | `smooth_r2_diag.sh` | 5a | standard | 1 | 4G | 30 min | R² calibration; runs between smooth and hap_scan |
@@ -259,17 +260,19 @@ Bam files below ~1 GB likely indicate a failed library prep and should be reproc
 
 ## Step 3 — Generate REFALT counts (bam to REFALT)
 
-> **The default SNP caller is the founder-catalog caller** — `build_catalog.sh`
-> (build a SNP catalog from the founders once) then `call_samples.sh` (count each
-> sample against it). It writes `Calls/RefAlt.<chr>.txt`, which the rest of the
-> pipeline reads. Full instructions, rules, resources, and rerun-impact are in the
-> **"Founder-catalog caller"** appendix at the end of this README. The steps below
-> describe the **legacy** joint QUAL caller (`bam2bcf2REFALT.sh` / `run_refalt.sh`),
-> kept for reproducing older analyses; new projects should use the catalog caller.
+The default SNP caller is the **founder-catalog caller**: decide the SNP list
+once from the founders, then count each sample's REF/ALT reads at those fixed
+positions. It is two deliberate commands — `build_catalog.sh` (3c) then
+`call_samples.sh` (3d) — and it produces `Calls/RefAlt.<chr>.txt`, the sole input
+to everything downstream.
 
-Create `helpfiles/<project>/bam_list.txt` — one BAM path per line, sample BAMs
-first, then founders. Build a draft from your BAM directory, append founders,
-then **review it** before submitting.
+Why it works this way, the exact filters, resource sizing, and what each kind of
+rerun costs are in the **"Founder-catalog caller"** appendix at the end of this
+README. The superseded joint QUAL caller is in
+[`scripts/legacy/`](scripts/legacy/README.md), kept only for reproducing older
+analyses.
+
+### 3a — Choose your founders
 
 First, check which founders are available:
 
@@ -299,6 +302,14 @@ If your design crossed the synthetic population to a tester strain or other
 reference genotype, treat that strain as an additional founder and include its
 BAM in the list alongside the population founders.
 
+### 3b — Build the bam list
+
+Create `helpfiles/<project>/bam_list.txt` — one BAM path per line: your sample
+BAMs, then whichever founders you want as columns in `RefAlt`. `call_samples.sh`
+counts **exactly** the BAMs you list, so this file is the record of what went into
+the callset. Build a draft from your BAM directory, append founders, then
+**review it** before submitting.
+
 ```bash
 # Draft from your sample BAMs
 ls data/bam/<project>/*.bam > helpfiles/<project>/bam_list.txt
@@ -315,15 +326,42 @@ git commit -m "add bam list for <project>"
 git push
 ```
 
+### 3c — Build the catalog (once per population)
+
 ```bash
 mkdir -p process/<project>
-JID_REFALT=$(bash pipeline/scripts/run_refalt.sh \
+bash pipeline/scripts/build_catalog.sh \
+    --founders pipeline/helpfiles/A_founders.bams.txt \
+    --out      process/<project>/Catalog
+```
+
+Founder calling runs as a 5-task array (one chromosome each: chrX, chr2L, chr2R,
+chr3L, chr3R), then gathers and applies thresholds. This is the slow part (~4 h
+per chromosome) and you do it **once** — every later run, and every added sample,
+reuses it.
+
+Building **overwrites** `--out` and has no staleness check, so it is a deliberate
+act: nothing else in the pipeline builds a catalog for you. Thresholds
+(`--min-dp`, `--maxaf`, `--snpgap`, `--exempt-founders`) can be re-cut in seconds
+afterwards without recalling the founders — see the appendix.
+
+### 3d — Count your samples against it
+
+```bash
+JID_REFALT=$(bash pipeline/scripts/call_samples.sh \
+    --catalog process/<project>/Catalog \
     --bamlist helpfiles/<project>/bam_list.txt \
     --dir     process/<project>)
 ```
 
-This runs as a 5-task array (one chromosome each: chrX, chr2L, chr2R, chr3L,
-chr3R) and produces `RefAlt.<chr>.txt` files in `process/<project>/`.
+One job per sample (2–11 min each), then a merge into
+`process/<project>/Calls/RefAlt.<chr>.txt`. It prints the merge job ID, so you can
+chain Step 4 on it with `--after ${JID_REFALT}`.
+
+**Adding samples later costs only the new samples.** Rerun `call_samples.sh` with a
+`--bamlist` of *just the new BAMs*: the catalog is reused, existing per-sample
+counts are left alone, and `RefAlt.<chr>.txt` is re-merged to include everything.
+See **"Worked example — adding replicates to an existing experiment"**.
 
 ---
 
@@ -476,8 +514,8 @@ reads this file to apply the calibration correction automatically.
 
 ```bash
 sbatch pipeline/scripts/smooth_r2_diag.sh \
-    --hapsdir   process/<project> \
-    --smoothdir process/<project>/<scan_name> \
+    --hapsdir   process/<project>/Haps \
+    --smoothdir process/<project>/Scans/<scan_name> \
     --scan      <scan_name> \
     --rfile     helpfiles/<project>/design.txt
 ```
@@ -492,10 +530,10 @@ sbatch --array=1-5 pipeline/scripts/hap_scan.sh \
     --outdir <scan_name>
 ```
 
-**3. Concatenate chromosomes and generate quick-look plots:**
+**4. Concatenate chromosomes and generate quick-look plots:**
 
 ```bash
-bash pipeline/scripts/concat_scans.sh process/<project>/<scan_name>
+bash pipeline/scripts/concat_scans.sh process/<project>/Scans/<scan_name>
 ```
 
 ### Smoothing window
@@ -507,14 +545,16 @@ are stable without over-smoothing genuine biological signal. Override with
 
 ### Legacy scan (no smoothing)
 
-An older scan method without haplotype smoothing is preserved for reference:
+An older scan method without haplotype smoothing is preserved in
+[`scripts/legacy/`](scripts/legacy/README.md) for reproducing pre-smoothing
+results. It is not part of the current pipeline:
 
 ```bash
-sbatch --array=1-5 pipeline/scripts/haps2scan.Apr2025.sh \
+sbatch --array=1-5 pipeline/scripts/legacy/haps2scan.Apr2025.sh \
     --rfile  helpfiles/<project>/design.txt \
     --dir    process/<project> \
     --outdir <scan_name>
-bash pipeline/scripts/concat_scans.sh process/<project>/<scan_name>
+bash pipeline/scripts/concat_scans.sh process/<project>/Scans/<scan_name>
 ```
 
 ---
@@ -558,8 +598,8 @@ submitted via `--wrap` in the worked example scripts, or run interactively.
 
 ```bash
 Rscript pipeline/scripts/plot_5panel.R \
-    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
-    --out    process/<project>/<scan_name>/<scan_name>.wald.png \
+    --scan   process/<project>/Scans/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/Scans/<scan_name>/<scan_name>.wald.png \
     --format powerpoint \
     --threshold 10
 ```
@@ -584,8 +624,8 @@ dotted vertical lines. Same interface as `plot_5panel.R`:
 
 ```bash
 Rscript pipeline/scripts/plot_manhattan.R \
-    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
-    --out    process/<project>/<scan_name>/<scan_name>.manhattan.png \
+    --scan   process/<project>/Scans/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/Scans/<scan_name>/<scan_name>.manhattan.png \
     --format powerpoint \
     --threshold 10
 ```
@@ -594,8 +634,8 @@ Rscript pipeline/scripts/plot_manhattan.R \
 
 ```bash
 Rscript pipeline/scripts/plot_H2_overlay.R \
-    --scan   process/<project>/<scan_name>/<scan_name>.scan.txt \
-    --out    process/<project>/<scan_name>/<scan_name>.H2.png \
+    --scan   process/<project>/Scans/<scan_name>/<scan_name>.scan.txt \
+    --out    process/<project>/Scans/<scan_name>/<scan_name>.H2.png \
     --format powerpoint
 ```
 
@@ -603,8 +643,8 @@ Rscript pipeline/scripts/plot_H2_overlay.R \
 
 ```bash
 Rscript pipeline/scripts/plot_freqsmooth_snp.R \
-    --scan   process/<project>/<scan_name>/<scan_name>.snp_scan.txt \
-    --out    process/<project>/<scan_name>/<scan_name>.snp.wald.png \
+    --scan   process/<project>/Scans/<scan_name>/<scan_name>.snp_scan.txt \
+    --out    process/<project>/Scans/<scan_name>/<scan_name>.snp.wald.png \
     --format powerpoint --threshold 10
 ```
 
@@ -724,11 +764,26 @@ git commit -m "add config files for heatshock experiment"
 git push
 ```
 
-### 2. Run the full pipeline
+### 2. Build the catalog (once)
 
-`run_full_pipeline.sh` chains every step (align → REFALT → haplotypes →
-scan → SNP scan → figures) with SLURM dependency chaining. Submit once and
-walk away:
+Building a catalog overwrites its output and has no staleness check, so it is a
+deliberate act — `run_full_pipeline.sh` never does it for you. Build it once and
+every later run, and every sample you add, reuses it:
+
+```bash
+mkdir -p process/heatshock
+bash pipeline/scripts/build_catalog.sh \
+    --founders pipeline/helpfiles/A_founders.bams.txt \
+    --out      process/heatshock/Catalog
+```
+
+Let this finish before step 3 (~4 h per chromosome, all 5 in parallel).
+
+### 3. Run the full pipeline
+
+`run_full_pipeline.sh` chains every step (align → count against the catalog →
+haplotypes → scan → SNP scan → figures) with SLURM dependency chaining. Submit
+once and walk away:
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
@@ -736,6 +791,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --barcodes     helpfiles/heatshock/heatshock.barcodes.txt \
     --rawdir       data/raw/heatshock \
     --bamdir       data/bam/heatshock \
+    --catalog      process/heatshock/Catalog \
     --parfile      helpfiles/heatshock/hap_params.R \
     --design       helpfiles/heatshock/design.txt \
     --scan         heatshock_smooth250 \
@@ -745,29 +801,43 @@ bash pipeline/scripts/run_full_pipeline.sh \
 ```
 
 The script prints each SLURM job ID as it submits. When the final job
-finishes, results are in `process/heatshock/heatshock_smooth250/`.
+finishes, results are in `process/heatshock/Scans/heatshock_smooth250/`.
 
-### 3. Download results
+### 4. Download results
 
 ```bash
-scp <user>@<cluster>:<path>/process/heatshock/heatshock_smooth250/heatshock_smooth250.tar.gz .
+scp <user>@<cluster>:<path>/process/heatshock/Scans/heatshock_smooth250/heatshock_smooth250.tar.gz .
 tar xzf heatshock_smooth250.tar.gz
 ```
 
 ### Rerunning with different parameters
 
-If you've added new samples to an existing project (aligned them with
-`fq2bam.sh`, updated your bam_list, hap_params, and design), rerun
-everything from REFALT onward:
+**Added new samples?** Count only the new ones. The catalog is untouched and the
+per-sample counts you already have are reused — then haplotypes and the scan rerun
+over everything:
 
 ```bash
+# 1. Align the new samples (Step 2), then count JUST THEM against the catalog.
+#    bam_list_batch2.txt holds only the new BAMs.
+JID_REFALT=$(bash pipeline/scripts/call_samples.sh \
+    --catalog process/heatshock/Catalog \
+    --bamlist helpfiles/heatshock/bam_list_batch2.txt \
+    --dir     process/heatshock)
+
+# 2. Haplotypes + scan over ALL samples (hap_params.R and design.txt updated to
+#    include the new ones). --skip-refalt because step 1 already did it.
 bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam \
+    --skip-fq2bam --skip-refalt --after ${JID_REFALT} \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design.txt --scan heatshock_v2 \
     --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
+
+Handing `run_full_pipeline.sh` a full `bam_list.txt` instead also gives correct
+results, but it re-counts every sample from scratch — a few minutes each, wasted.
+Use the two-step form above on large experiments. Full detail:
+**"Worked example — adding replicates to an existing experiment"**.
 
 If you already have haplotypes and just want a new scan with a different
 design (e.g. different contrasts or subsets of samples), skip straight
@@ -802,10 +872,12 @@ bash pipeline/scripts/run_scan.sh \
 ```
 
 **If you need to run REFALT + haplotypes + multiple scans all at once**
-(starting from BAMs — submit everything and walk away):
+(starting from BAMs, with the catalog already built — submit everything and walk
+away):
 
 ```bash
-JID_REFALT=$(bash pipeline/scripts/run_refalt.sh \
+JID_REFALT=$(bash pipeline/scripts/call_samples.sh \
+    --catalog process/heatshock/Catalog \
     --bamlist helpfiles/heatshock/bam_list.txt \
     --dir     process/heatshock)
 
@@ -833,7 +905,7 @@ The figure scripts bundle everything into a tarball at the end of the worked
 example pipeline. Download it:
 
 ```bash
-scp <user>@<cluster>:<path>/process/<project>/<scan_name>/<scan_name>.tar.gz .
+scp <user>@<cluster>:<path>/process/<project>/Scans/<scan_name>/<scan_name>.tar.gz .
 tar xzf <scan_name>.tar.gz
 ```
 
@@ -910,12 +982,22 @@ the `run_full_pipeline.sh` invocation for your project.
 
 ## Worked example — adding replicates to an existing experiment
 
-You sequenced 3 replicates, ran the pipeline, then sequenced 3 more. You only
-need to align the new samples, then rerun from Step 3 with all BAMs combined.
+You sequenced 3 replicates, ran the pipeline, then sequenced 3 more.
+
+**This is cheap, by design.** The founder catalog does not change when you add
+samples — it was built from the founders, and the founders did not change. So:
+
+- **The catalog is reused.** No founder recall (that is the ~4 h/chromosome step).
+- **Only the new samples are counted.** The existing per-sample counts in
+  `Calls/counts/` are already correct and are left alone.
+- **`RefAlt.<chr>.txt` is re-merged** over all counts, old and new.
+- **Haplotypes and the scan do rerun over everything** — haplotype inference is
+  joint across samples, so it cannot be done incrementally.
 
 **What changes:**
 - New barcode file for the new samples
-- `helpfiles/<project>/bam_list.txt` rebuilt to include all BAM paths
+- A **second** bam list holding *only the new BAMs* (`bam_list_batch2.txt`) — this
+  is what you count. Keep `bam_list.txt` updated to the full set as your record.
 - `helpfiles/<project>/hap_params.R` updated: add new sample names to `names_in_bam`
 - `helpfiles/<project>/design.txt` updated: add rows for new samples
 - New scan name so you don't overwrite the 3-rep results
@@ -931,21 +1013,37 @@ sbatch --array=1-${NN} pipeline/scripts/fq2bam.sh \
 
 **Step 2 — Update your config files:**
 
-- Rebuild `helpfiles/<project>/bam_list.txt` to include all BAMs (old + new)
-- Update `hap_params.R`: add new sample names to `names_in_bam`
-- Update `design.txt`: add rows for new samples
-
 ```bash
+# The list you will COUNT: only the new BAMs (no founders — they are already
+# columns in the existing counts).
+ls data/bam/<project>/R{4,5,6}*.bam > helpfiles/<project>/bam_list_batch2.txt
+
+# Keep the full list current as the record of the whole callset.
+cat helpfiles/<project>/bam_list_batch2.txt >> helpfiles/<project>/bam_list.txt
+
+# Then: add the new sample names to hap_params.R (names_in_bam) and rows to design.txt
 git add helpfiles/<project>/
 git commit -m "add batch 2 samples to <project>"
 git push
 ```
 
-**Step 3 — Rerun from REFALT with a new scan name** (once alignment finishes):
+**Step 3 — Count only the new samples** (once alignment finishes):
+
+```bash
+JID_REFALT=$(bash pipeline/scripts/call_samples.sh \
+    --catalog process/<project>/Catalog \
+    --bamlist helpfiles/<project>/bam_list_batch2.txt \
+    --dir     process/<project>)
+```
+
+This submits one job per *new* sample (2–11 min each), then re-merges
+`Calls/RefAlt.<chr>.txt` over all samples. Nothing else is recomputed.
+
+**Step 4 — Haplotypes + scan over all samples, with a new scan name:**
 
 ```bash
 bash pipeline/scripts/run_full_pipeline.sh \
-    --skip-fq2bam \
+    --skip-fq2bam --skip-refalt --after ${JID_REFALT} \
     --project      <project> \
     --parfile      helpfiles/<project>/hap_params.R \
     --design       helpfiles/<project>/design.txt \
@@ -955,9 +1053,14 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
-Steps 3–4 must rerun with **all** BAMs because SNP calling and haplotype
-inference are joint across all samples. Use a new scan name to preserve the
-original results.
+`--skip-refalt` because Step 3 already did it; `--after` chains the haplotype job
+on the merge so it starts only once `RefAlt.<chr>.txt` is complete. Use a new
+`--scan` name to preserve the original 3-replicate results.
+
+> **Sanity check:** counting all 6 replicates at once and counting 3-then-3
+> incrementally must produce the same `RefAlt.<chr>.txt`, because the catalog and
+> the input BAMs are identical either way. Verify with `compare_refalt_calls.R` if
+> you want the assurance — that equivalence is the property this design exists for.
 
 ---
 
@@ -1021,66 +1124,47 @@ bash pipeline/scripts/show_project_layout.sh <project>
 
 ---
 
-## Appendix — Proposed tiled SNP caller (under validation)
+## Appendix — Legacy and superseded scripts
 
-> **Status: candidate, not yet adopted.** The validated Step 3 caller is
-> `bam2bcf2REFALT.sh` / `run_refalt.sh` and is unchanged. The scripts below are a
-> proposed drop-in replacement that must be proven byte-identical before it
-> replaces the current caller. Nothing in the normal pipeline calls them.
+Nothing in the current pipeline uses these. They live in
+[`scripts/legacy/`](scripts/legacy/README.md) and are kept only so older analyses
+can be reproduced exactly. They are not maintained and are not covered by the
+resource or rerun-impact tables above.
 
-`bam2bcf2REFALT.sh` calls SNPs one array task per chromosome. `bcftools` is
-single-threaded, so on large datasets each chromosome runs for days. The
-proposal scatters calling across ~5 Mb genome tiles (~29 array tasks for dm6),
-cutting per-task wall-clock by roughly the number of tiles per chromosome.
+| What | Scripts | Superseded by |
+|---|---|---|
+| **Joint QUAL caller** — joint-called every BAM, kept SNPs on `QUAL>59` | `bam2bcf2REFALT.sh`, `run_refalt.sh` | the founder-catalog caller (Step 3) |
+| **Tiled caller** — scatter/gather variant of the above; was under validation when the whole approach was superseded, so never adopted | `make_tiles.sh`, `bam2bcf2REFALT.tiled.sh`, `reassemble_refalt.sh`, `run_refalt.tiled.sh`, `compare_refalt.sh` | never adopted |
+| **Unsmoothed scan** | `haps2scan.Apr2025.{sh,R,code.R}` | `run_scan.sh` (Step 5a) |
 
-Each tile is called on a slightly **padded** region and its output trimmed to a
-non-overlapping **core** (`make_tiles.sh`), so a boundary SNP still sees full
-read/realignment context yet appears in exactly one tile. Cores tile each
-chromosome with no gaps or overlap, so reassembly (`reassemble_refalt.sh`) is a
-plain concatenation into the same `RefAlt.<chr>.txt` format — downstream is
-untouched.
+Note the legacy caller wrote `RefAlt.<chr>.txt` to the **top level** of its
+`--dir`, which predates the `Calls/Haps/Scans` layout. Run
+`reorganize_project.sh` on such a project before the haplotype step. See
+`scripts/legacy/README.md` for the commands.
 
-Scripts: `make_tiles.sh` (tiling), `bam2bcf2REFALT.tiled.sh` (scatter caller),
-`reassemble_refalt.sh` (gather), `run_refalt.tiled.sh` (wrapper),
-`compare_refalt.sh` (validation).
-
-**Validation recipe** — run the candidate into a *separate* directory and diff
-against a validated run of the current caller:
-
-```bash
-# candidate caller → its own directory (does not touch the validated output)
-JID=$(bash pipeline/scripts/run_refalt.tiled.sh \
-        --bamlist helpfiles/<project>/bam_list.txt \
-        --dir     process/<project>_tiled)
-
-# once both runs finish, compare — expect IDENTICAL on every chromosome
-bash pipeline/scripts/compare_refalt.sh \
-        process/<project>          \
-        process/<project>_tiled
-```
-
-If every chromosome reports `IDENTICAL`, the candidate is equivalent and can be
-promoted to replace `bam2bcf2REFALT.sh` / `run_refalt.sh`. Tune the tiling with
-`--window` / `--pad`.
+`compare_refalt.sh` (legacy) checks whether two `RefAlt` directories are
+*byte-identical* — the right test for a refactor meant to change nothing. To
+compare two genuinely different callsets, use `compare_refalt_calls.R`, which
+reports SNP overlap and count agreement instead.
 
 ---
 
 ## Appendix — Founder-catalog caller (the default)
 
-> **Status: default caller.** Validated end-to-end against the legacy QUAL caller
-> on AGE_SY (SNP counts → per-SNP frequency → haplotype scan): it reproduces the
-> legacy scan's QTL peaks with slightly more power (recovers chr2L SNPs the joint
-> caller missed; no rare-allele loss). The legacy `bam2bcf2REFALT.sh` /
-> `run_refalt.sh` remain available for reproducing older analyses. Output uses the
-> `Calls/Haps/Scans` stage layout; migrate a pre-layout project with
-> `reorganize_project.sh`.
+> **Status: default caller.** This appendix is the *reference* for the caller —
+> the runbook is **Step 3**. Validated end-to-end against the legacy QUAL caller on
+> AGE_SY (SNP counts → per-SNP frequency → haplotype scan): it reproduces the legacy
+> scan's QTL peaks with slightly more power (recovers chr2L SNPs the joint caller
+> missed; no rare-allele loss). Output uses the `Calls/Haps/Scans` stage layout;
+> migrate a pre-layout project with `reorganize_project.sh`. The legacy caller is in
+> [`scripts/legacy/`](scripts/legacy/README.md).
 
-**Why.** The current caller joint-calls every BAM and keeps SNPs on `QUAL>59`.
+**Why.** The legacy caller joint-called every BAM and kept SNPs on `QUAL>59`.
 `QUAL` is a joint-cohort, diploid-model statistic that shifts with interval spec,
 BAQ, and how many samples are in the run, so it is not stable across runs. The
-current pipeline *already* applies a founder-fixation filter downstream
-(`REFALT2haps.code.R`, the `good_SNPs` step); this proposal makes that biological
-filter the primary one and drops `QUAL` entirely.
+pipeline *already* applied a founder-fixation filter downstream
+(`REFALT2haps.code.R`, the `good_SNPs` step); the catalog caller makes that
+biological filter the primary one and drops `QUAL` entirely.
 
 **How.** Build a SNP **catalog** once from the founders (the founder-fixation
 rules below, no `QUAL`), then count each sample's REF/ALT reads at the fixed
@@ -1188,34 +1272,23 @@ caller re-calls everything together and, on large datasets, took close to **thre
 
 ### Two explicit commands: build the catalog, then call samples
 
+The runnable commands are in **Step 3** — this section is the design rationale
+behind them.
+
 A catalog is defined by its **founder set**, so it is a standalone artifact you
 build once per population and point callings at. Building the database and calling
 samples are **separate, deliberate acts** — neither silently does the other, and
-neither has a reuse/staleness check: you run it, it overwrites.
+neither has a reuse/staleness check: you run it, it overwrites. That is why
+`run_full_pipeline.sh` requires a `--catalog` and never builds one.
 
-**Build a catalog** (`--founders` = the founder set, `--out` = where it lives):
+Founder calling is the slow part, so `build_catalog.sh` parallelizes it per
+chromosome (`--array=1-5`) and gathers into one `catalog.tsv.gz`; the large
+per-chromosome intermediates in `work/` are removed afterward (`--keep-work` to
+retain them).
 
-```bash
-bash pipeline/scripts/build_catalog.sh \
-    --founders pipeline/helpfiles/B_founders.bams.txt \
-    --out      process/<project>/Catalog
-```
-
-Founder calling is the slow part, so it is parallelized per chromosome
-(`--array=1-5`) and gathered into one `catalog.tsv.gz`; the large per-chromosome
-intermediates in `work/` are removed afterward (`--keep-work` to retain them).
-
-**Call samples** against the catalog you choose (the population you are calling):
-
-```bash
-JID=$(bash pipeline/scripts/call_samples.sh \
-    --catalog process/<project>/Catalog \
-    --bamlist helpfiles/<project>/bam_list.txt \
-    --dir     process/<project>)
-```
-
-It counts each BAM against the catalog — one whole-genome job per sample, cheap at
-a fixed catalog — and merges into `RefAlt.<chr>.txt`.
+`call_samples.sh` counts each BAM against the catalog — one whole-genome job per
+sample, cheap at a fixed catalog — and merges into `RefAlt.<chr>.txt`. A catalog
+outside the project directory is shared: `--out` / `--catalog` are just paths.
 
 **Add samples:** rerun `call_samples.sh` with a `--bamlist` of *just the new BAMs*.
 Their counts land next to the existing ones and everything is re-merged; you count
@@ -1244,15 +1317,20 @@ process/<project>/
 │   ├── catalog.tsv.gz (+ .tbi)    the -T positions file under the chosen thresholds
 │   ├── founders.bams.txt          the founder set that defined it
 │   └── catalog.stats.txt          per-rule SNP tally
-└── Calls/                         written by call_samples.sh
-    ├── counts/<sample>.tsv.gz     per-sample REF/ALT counts
-    └── RefAlt.<chr>.txt           the deliverable
+├── Calls/                         written by call_samples.sh
+│   ├── counts/<sample>.tsv.gz     per-sample REF/ALT counts
+│   └── RefAlt.<chr>.txt           the deliverable
+├── Haps/                          written by run_haps.sh (Step 4)
+│   ├── R.haps.<chr>.rds
+│   └── R.haps.<chr>.out.rds
+└── Scans/                         written by run_scan.sh (Step 5)
+    └── <scan_name>/
 ```
 
-A shared catalog is just `--out` / `--catalog` pointing at a location outside the
-project. Moving `Haps/` and `Scans/` into stage folders too is a later step — for
-now only this caller uses the new layout, and the validated haps/scan steps are
-untouched.
+Every stage uses this layout — `Calls/`, `Haps/`, and `Scans/` are what the
+haplotype and scan steps read and write. Migrate a project that predates it with
+`reorganize_project.sh` (no recompute). A shared catalog is just `--out` /
+`--catalog` pointing at a location outside the project.
 
 ### Resources
 
@@ -1288,21 +1366,22 @@ full rebuild. Commit messages for catalog fixes state which kind they are.
 
 ### The test
 
-Evaluated against the current pipeline on the same project. Because `RefAlt` is the
-sole input to everything downstream, if the counts are consistent the downstream is
-deterministic and does not need re-validating — the test is about the `RefAlt`:
+How this caller was validated, and how to compare any two callsets (a legacy run,
+or two threshold re-cuts of one catalog). Because `RefAlt` is the sole input to
+everything downstream, if the counts are consistent the downstream is deterministic
+and does not need re-validating — the test is about the `RefAlt`:
 
 ```bash
 module load R/4.2.2
 Rscript pipeline/scripts/compare_refalt_calls.R \
-        process/<old_version>          \   # current-pipeline RefAlt.<chr>.txt
+        process/<old_version>          \   # legacy-caller RefAlt.<chr>.txt
         process/<project>/Calls            # catalog-caller RefAlt.<chr>.txt
 ```
 
 Two questions:
 
 1. **Counts consistent?** At SNPs both callers keep, per-sample counts should agree
-   closely (residual = BAQ-on current vs BAQ-off catalog). If not, the counting is wrong.
+   closely (residual = BAQ-on legacy vs BAQ-off catalog). If not, the counting is wrong.
 2. **SNP set right?** The rules keep a different (usually smaller) set than `QUAL>59`.
    `catalog.stats.txt` shows *which rule* drops how many; `compare_refalt_calls.R`
    dumps the sites unique to each side. Judge whether the dropped sites are

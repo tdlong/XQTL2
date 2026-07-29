@@ -1,7 +1,8 @@
 #!/bin/bash
 # call_samples.sh — count BAMs against a catalog and merge into RefAlt.<chr>.txt.
 #
-# PROPOSED founder-catalog caller (separate from the validated bam2bcf2REFALT.sh).
+# Stage 2 of the DEFAULT SNP caller (the founder-catalog caller); build_catalog.sh
+# is stage 1. The superseded joint QUAL caller is in scripts/legacy/.
 # Calling samples is SEPARATE from building the catalog: this never builds a
 # catalog, it counts against an existing one you choose with --catalog (the
 # population you are calling).

@@ -10,8 +10,8 @@
 #
 # Usage:
 #   Rscript scripts/temp/smooth_r2_diag.R \
-#       --hapsdir  process/PROJ \
-#       --smoothdir process/PROJ/SCAN \
+#       --hapsdir  process/PROJ/Haps \
+#       --smoothdir process/PROJ/Scans/SCAN \
 #       --scan     SCAN_NAME \
 #       --rfile    helpfiles/PROJ/design.txt
 ###############################################################################

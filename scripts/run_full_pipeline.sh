@@ -2,8 +2,17 @@
 ###############################################################################
 # run_full_pipeline.sh — end-to-end XQTL pipeline with SLURM dependencies
 #
-# Chains Steps 2–6: fq2bam → bam2bcf2REFALT → REFALT2haps → scan → figures.
+# Chains Steps 2–6: fq2bam → call_samples → REFALT2haps → scan → figures.
 # Each step waits for the previous one to finish successfully before starting.
+#
+# REFALT comes from the founder-catalog caller (call_samples.sh). The catalog
+# itself is NOT built here: build_catalog.sh overwrites its --out with no
+# staleness check, so building is a deliberate one-time act you run yourself.
+# Build it once, then point every run at it with --catalog:
+#
+#   bash pipeline/scripts/build_catalog.sh \
+#       --founders pipeline/helpfiles/A_founders.bams.txt \
+#       --out      process/<project>/Catalog
 #
 # Usage:
 #   bash pipeline/scripts/run_full_pipeline.sh \
@@ -11,12 +20,15 @@
 #       --barcodes  helpfiles/<project>/<project>.barcodes.txt \
 #       --rawdir    data/raw/<project> \
 #       --bamdir    data/bam/<project> \
+#       --catalog   process/<project>/Catalog \
 #       --parfile   helpfiles/<project>/hap_params.R \
 #       --design    helpfiles/<project>/design.txt \
 #       --scan      <scan_name> \
 #       --founders  A \
 #       --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
 #       --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+#
+# --catalog defaults to process/<project>/Catalog.
 #
 # Skip early steps if you already have BAMs or haplotypes:
 #       --skip-fq2bam         start at Step 3 (REFALT)
@@ -49,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --bamdir)        BAMDIR="$2";        shift 2 ;;
     --parfile)       PARFILE="$2";       shift 2 ;;
     --design)        DESIGN="$2";        shift 2 ;;
+    --catalog)       CATALOG="$2";       shift 2 ;;
     --scan)          SCAN="$2";          shift 2 ;;
     --smooth)        SMOOTH_KB="$2";     shift 2 ;;
     --founders)      FOUNDERS="$2";      shift 2 ;;  # A or B
@@ -101,7 +114,7 @@ if [[ "$SKIP_FQ2BAM" == false ]]; then
     AFTER_BAM="--dependency=afterok:${jid_bam}"
 fi
 
-# ── Step 3: bam2bcf2REFALT ──────────────────────────────────────────────────
+# ── Step 3: REFALT — count samples against the founder catalog ──────────────
 AFTER_REFALT=""
 if [[ "$SKIP_REFALT" == false ]]; then
     # Build bam_list if it doesn't exist yet
@@ -115,10 +128,21 @@ if [[ "$SKIP_REFALT" == false ]]; then
         echo "Built ${BAMLIST} — review before results are final"
     fi
 
-    jid_refalt=$(sbatch --parsable ${AFTER_BAM} ${SLURM_COMMON} \
-        --array=1-5 "pipeline/scripts/bam2bcf2REFALT.sh" \
-        "${BAMLIST}" "${PROCESSDIR}")
-    echo "REFALT:     ${jid_refalt}"
+    # Never built here — see the header. call_samples.sh errors out if it is missing.
+    [[ -z "${CATALOG:-}" ]] && CATALOG="${PROCESSDIR}/Catalog"
+
+    # call_samples.sh takes a bare job ID, not an sbatch --dependency string.
+    AFTER_BAM_JID=""
+    [[ -n "$AFTER_BAM" ]] && AFTER_BAM_JID=$(echo "$AFTER_BAM" | grep -o '[0-9]*')
+
+    # It prints progress then the merge job ID last.
+    jid_refalt=$(bash pipeline/scripts/call_samples.sh \
+        --catalog "${CATALOG}" \
+        --bamlist "${BAMLIST}" \
+        --dir     "${PROCESSDIR}" \
+        ${AFTER_BAM_JID:+--after ${AFTER_BAM_JID}} \
+        -p "${PARTITION}" -A "${ACCOUNT}" | tail -1)
+    echo "REFALT:     ${jid_refalt}  (catalog: ${CATALOG})"
     AFTER_REFALT="--dependency=afterok:${jid_refalt}"
 fi
 
@@ -126,6 +150,9 @@ fi
 if [[ "$SKIP_HAPS" == false ]]; then
     AFTER_HAPS_FLAG=""
     [[ -n "$AFTER_REFALT" ]] && AFTER_HAPS_FLAG="--after $(echo $AFTER_REFALT | grep -o '[0-9]*')"
+    # --skip-refalt with an externally submitted REFALT job (e.g. call_samples.sh run
+    # by hand to count only newly added samples): chain haplotypes on it via --after.
+    [[ -z "$AFTER_HAPS_FLAG" && -n "$AFTER_HAPS" ]] && AFTER_HAPS_FLAG="--after ${AFTER_HAPS}"
     jid_haps=$(bash pipeline/scripts/run_haps.sh \
         --parfile "${PARFILE}" --dir "${PROCESSDIR}" \
         ${AFTER_HAPS_FLAG} \
@@ -159,7 +186,7 @@ if [[ -n "$SNP_TABLE" && -n "$FOUNDER_LIST" ]]; then
 fi
 
 # ── Step 6: figures + tarball ───────────────────────────────────────────────
-SCAN_DIR="${PROCESSDIR}/${SCAN}"
+SCAN_DIR="${PROCESSDIR}/Scans/${SCAN}"   # stage layout (see reorganize_project.sh)
 FIG_DEPS="--dependency=afterok:${jid_hap}"
 [[ -n "$jid_snp" ]] && FIG_DEPS="--dependency=afterok:${jid_hap}:${jid_snp}"
 

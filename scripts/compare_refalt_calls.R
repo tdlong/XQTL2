@@ -1,7 +1,8 @@
 # compare_refalt_calls.R — compare two RefAlt callsets that are NOT expected to
-# be identical (e.g. the current QUAL-filtered pipeline vs the proposed founder-
-# catalog pipeline). Unlike compare_refalt.sh (which checks byte-identity of the
-# tiled caller), this quantifies how two different callsets relate.
+# be identical (e.g. the legacy QUAL-filtered caller vs the default founder-
+# catalog caller, or two threshold re-cuts of one catalog). Unlike
+# scripts/legacy/compare_refalt.sh (which checks byte-identity), this quantifies
+# how two different callsets relate.
 #
 # For each chromosome it answers three questions in plain terms:
 #   1. How many SNPs does each keep, and how much do the site lists overlap?
@@ -27,7 +28,7 @@ chrs <- if (length(args) >= 3) strsplit(args[3], ",")[[1]] else c("chrX", "chr2L
 
 # long format: one row per (POS, sample) with REF/ALT counts and frequency
 to_long <- function(path) {
-  # bam2bcf2REFALT.sh writes RefAlt with a TAB header but SPACE-separated data;
+  # The legacy bam2bcf2REFALT.sh wrote RefAlt with a TAB header but SPACE-separated data;
   # the catalog caller writes all tabs. Squeeze both to single spaces so fread
   # reads either format (fread auto-picks one separator and would otherwise
   # collapse the mixed-whitespace header into a single column).

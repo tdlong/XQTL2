@@ -5,7 +5,7 @@
 # Prints the job ID to stdout so callers can condition downstream jobs on it.
 #
 # Usage:
-#   JID_REFALT=$(bash pipeline/scripts/run_refalt.sh \
+#   JID_REFALT=$(bash pipeline/scripts/legacy/run_refalt.sh \
 #       --bamlist helpfiles/<project>/bam_list.txt \
 #       --dir     process/<project>)
 #
@@ -46,6 +46,6 @@ sbatch --parsable ${DEP} \
     -A ${ACCOUNT} -p ${PARTITION} \
     --cpus-per-task=${CPUS_PER_TASK} --mem-per-cpu=${MEM_PER_CPU} \
     --time=5-00:00:00 --array=1-5 \
-    pipeline/scripts/bam2bcf2REFALT.sh \
+    pipeline/scripts/legacy/bam2bcf2REFALT.sh \
     "${BAMLIST}" "${DIR}" \
     | cut -d_ -f1

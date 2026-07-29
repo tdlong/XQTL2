@@ -34,16 +34,18 @@ check_refs() {
 }
 
 echo "Checking pipeline/scripts/* references..."
-check_refs 'pipeline/scripts/[A-Za-z0-9_.]+\.(sh|R)'
+check_refs 'pipeline/scripts/(legacy/)?[A-Za-z0-9_.]+\.(sh|R)'
 
 echo "Checking pipeline/helpfiles/* references..."
 check_refs 'pipeline/helpfiles/[A-Za-z0-9_.]+[A-Za-z0-9_.]'
 
 echo ""
 echo "Checking for scripts/* not mentioned in README..."
-# Only check .sh files — .R files are implementation details called by their .sh wrappers
+# Only check .sh files — .R files are implementation details called by their .sh wrappers.
+# maxdepth 1 below deliberately excludes scripts/legacy/, which is documented by
+# scripts/legacy/README.md rather than the main README.
 # Skip internal/non-user-facing scripts
-SKIP="check_readme.sh haps2scan.Apr2025.sh plot_scan_comparison.sh show_project_layout.sh"
+SKIP="check_readme.sh plot_scan_comparison.sh show_project_layout.sh"
 while IFS= read -r script; do
     name="$(basename "$script")"
     skip=false
