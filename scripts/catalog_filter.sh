@@ -24,7 +24,7 @@
 #
 # Usage (standalone re-cut, or via build_catalog.sh):
 #   sbatch catalog_filter.sh --catdir <catalog dir> \
-#          [--min-dp 10 --maxaf 0.03 --snpgap 25 --exempt-founders B5:chr2L]
+#          [--min-dp 10 --maxaf 0.03 --snpgap 20 --exempt-founders B5:chr2L]
 
 set -euo pipefail
 

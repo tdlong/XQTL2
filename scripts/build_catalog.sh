@@ -27,7 +27,7 @@
 # Usage:
 #   bash pipeline/scripts/build_catalog.sh \
 #       --founders pipeline/helpfiles/B_founders.bams.txt --out process/<project>/Catalog
-#       [--min-dp 10] [--maxaf 0.03] [--snpgap 25] [--exempt-founders B5:chr2L] [--keep-work]
+#       [--min-dp 10] [--maxaf 0.03] [--snpgap 20] [--exempt-founders B5:chr2L] [--keep-work]
 
 set -e
 
