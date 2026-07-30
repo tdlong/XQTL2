@@ -64,3 +64,6 @@ __pycache__/
 *.pyc
 node_modules/
 .quarto/
+
+# ── added: agent workspace ──
+.claude/
