@@ -50,3 +50,17 @@ pipeline
 check_cluster_state.out.txt
 *.DS_Store
 helpfiles/FREQ_SNPs_*.cM.txt.gz
+
+# ── universal (added by apply.sh) ──
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+~$*
+*.tmp
+*.swp
+.~lock*
+__pycache__/
+*.pyc
+node_modules/
+.quarto/
