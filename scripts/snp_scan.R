@@ -62,8 +62,25 @@ cat("Reading", filein, "\n")
 sm            <- readRDS(filein)
 freq_smoothed <- sm$freq
 err_smoothed  <- sm$err
-nrepl         <- sm$nrepl
 nF            <- length(founders)
+
+# REP is a label, not an index. Use the labels present in both arms; sm$nrepl is
+# a count over the union of the arms, so it is wrong whenever they differ.
+reps_C     <- sort(unique(freq_smoothed$REP[freq_smoothed$TRT == "C"]))
+reps_Z     <- sort(unique(freq_smoothed$REP[freq_smoothed$TRT == "Z"]))
+rep_labels <- intersect(reps_C, reps_Z)
+nrepl      <- length(rep_labels)
+if (nrepl == 0)
+  stop("no replicate label appears in both TRT==C and TRT==Z of ", basename(filein))
+
+dropped <- setdiff(union(reps_C, reps_Z), rep_labels)
+if (length(dropped))
+  cat(sprintf("Note: %d replicate(s) present in only one arm, dropped: %s\n",
+              length(dropped), paste(dropped, collapse = ", ")))
+cat(sprintf("Replicates used (%d): %s\n", nrepl, paste(rep_labels, collapse = ", ")))
+
+freq_smoothed <- freq_smoothed %>% filter(REP %in% rep_labels)
+err_smoothed  <- err_smoothed  %>% filter(REP %in% rep_labels)
 
 # Window positions for nearest-join
 win_positions <- freq_smoothed %>%
@@ -88,7 +105,7 @@ if (nrow(snp_df) == 0) {
          cM=numeric(), n_informative_founders=integer()) %>%
     write.table(fileout)
   tibble(chr=character(), pos=integer(), TRT=character(),
-         REP=integer(), F_alt=numeric(), cM=numeric()) %>%
+         REP=rep_labels[0], F_alt=numeric(), cM=numeric()) %>%
     write.table(fileout_means)
   quit(save="no")
 }
@@ -116,8 +133,10 @@ freq_by_pos <- freq_chr %>% group_by(pos) %>% group_split() %>%
 err_by_pos  <- err_chr  %>% group_by(pos) %>% group_split() %>%
   setNames(win_positions)
 
+# Everything below is ordered by position in rep_labels, never by the label's
+# own value, so arbitrary and non-contiguous labels line up across N1/N2/H/Err.
 build_freq_mat <- function(w_freq, trt) {
-  w_freq %>% filter(TRT == trt) %>% arrange(REP) %>%
+  w_freq %>% filter(TRT == trt) %>% arrange(match(REP, rep_labels)) %>%
     pivot_wider(names_from = founder, values_from = freq) %>%
     select(all_of(founders)) %>% as.matrix()
 }
@@ -125,7 +144,8 @@ build_freq_mat <- function(w_freq, trt) {
 build_err_arr <- function(w_err, trt) {
   arr <- array(NA_real_, c(nF, nF, nrepl))
   for (r in seq_len(nrepl)) {
-    vals <- w_err %>% filter(TRT == trt, REP == r) %>% arrange(fi, fj) %>% pull(v)
+    vals <- w_err %>% filter(TRT == trt, REP == rep_labels[r]) %>%
+      arrange(fi, fj) %>% pull(v)
     if (length(vals) == nF^2) arr[,,r] <- matrix(vals, nF, nF)
   }
   arr
@@ -133,9 +153,12 @@ build_err_arr <- function(w_err, trt) {
 
 # Cache N1/N2 (constant across windows for a given REP)
 N1 <- freq_chr %>% filter(TRT=="C", CHROM==mychr) %>%
-  group_by(REP) %>% slice(1) %>% arrange(REP) %>% pull(Num)
+  group_by(REP) %>% slice(1) %>% ungroup() %>%
+  arrange(match(REP, rep_labels)) %>% pull(Num)
 N2 <- freq_chr %>% filter(TRT=="Z", CHROM==mychr) %>%
-  group_by(REP) %>% slice(1) %>% arrange(REP) %>% pull(Num)
+  group_by(REP) %>% slice(1) %>% ungroup() %>%
+  arrange(match(REP, rep_labels)) %>% pull(Num)
+stopifnot(length(N1) == nrepl, length(N2) == nrepl)
 
 # ── SNP scan: process one window group at a time ─────────────────────────────
 # All SNPs in the same window share the same H and Err, so the frequency
@@ -225,10 +248,10 @@ all_results <- snp_df %>%
     # ── Per-sample imputed ALT frequencies (long format) ─────────────────────
     means_tib <- bind_rows(
       tibble(chr = mychr, pos = rep(snps_i$POS, each = nrepl),
-             TRT = "C", REP = rep(seq_len(nrepl), n_s),
+             TRT = "C", REP = rep(rep_labels, n_s),
              F_alt = as.vector(t(F_alt_C)), cM = rep(snps_i$cM, each = nrepl)),
       tibble(chr = mychr, pos = rep(snps_i$POS, each = nrepl),
-             TRT = "Z", REP = rep(seq_len(nrepl), n_s),
+             TRT = "Z", REP = rep(rep_labels, n_s),
              F_alt = as.vector(t(F_alt_Z)), cM = rep(snps_i$cM, each = nrepl))
     )
 

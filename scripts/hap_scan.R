@@ -62,26 +62,54 @@ sm            <- readRDS(filein)
 freq_smoothed <- sm$freq       # (CHROM, pos, TRT, REP, founder, freq, Num)
 err_smoothed  <- sm$err        # (CHROM, pos, TRT, REP, fi, fj, v)
 founder_names <- sm$founder_names
-nrepl         <- sm$nrepl
 nF            <- length(founder_names)
 
 ProportionSelect <- design.df %>%
   filter(TRT == "Z") %>% select(REP, Proportion) %>% arrange(REP)
 
+# ── Replicate labels ─────────────────────────────────────────────────────────
+# REP is a LABEL, not an index: arbitrary values, and replicates get dropped.
+# Take the labels present in BOTH arms -- a C/Z contrast needs both sides -- and
+# use that vector for every array built below.  sm$nrepl is n_distinct(REP)
+# pooled over both arms, i.e. the UNION, so trusting it lets array() recycle
+# silently when the arms differ.  Related to XQTL2 #32.
+reps_C     <- sort(unique(freq_smoothed$REP[freq_smoothed$TRT == "C"]))
+reps_Z     <- sort(unique(freq_smoothed$REP[freq_smoothed$TRT == "Z"]))
+rep_labels <- intersect(reps_C, reps_Z)
+nrepl      <- length(rep_labels)
+if (nrepl == 0)
+  stop("no replicate label appears in both TRT==C and TRT==Z of ", basename(filein))
+
+dropped <- setdiff(union(reps_C, reps_Z), rep_labels)
+if (length(dropped))
+  cat(sprintf("Note: %d replicate(s) present in only one arm, dropped: %s\n",
+              length(dropped), paste(dropped, collapse = ", ")))
+
+no_prop <- setdiff(rep_labels, ProportionSelect$REP)
+if (length(no_prop))
+  cat(sprintf("Note: %d replicate(s) have no TRT==Z row in %s, so contribute to the\n",
+              length(no_prop), basename(parsed$rfile)),
+      sprintf("      Wald test but not to heritability: %s\n",
+              paste(no_prop, collapse = ", ")), sep = "")
+
+cat(sprintf("Replicates used (%d): %s\n", nrepl, paste(rep_labels, collapse = ", ")))
+
 # ── Pre-build arrays once — avoids repeated dplyr ops inside window loop ──────
 cat(sprintf("Building arrays for %s...\n", mychr))
 
-freq_chr <- freq_smoothed %>% filter(CHROM == mychr)
-err_chr  <- err_smoothed  %>% filter(CHROM == mychr)
+# Restrict to the paired replicates, then order by label everywhere below.
+freq_chr <- freq_smoothed %>% filter(CHROM == mychr, REP %in% rep_labels)
+err_chr  <- err_smoothed  %>% filter(CHROM == mychr, REP %in% rep_labels)
 
 win_pos <- sort(unique(freq_chr$pos))
 W       <- length(win_pos)
 
-# Sample sizes: constant per REP across windows
+# Sample sizes: constant per REP across windows, in rep_labels order
 N1 <- freq_chr %>% filter(TRT == "C") %>%
-  distinct(REP, Num) %>% arrange(REP) %>% pull(Num)
+  distinct(REP, Num) %>% arrange(match(REP, rep_labels)) %>% pull(Num)
 N2 <- freq_chr %>% filter(TRT == "Z") %>%
-  distinct(REP, Num) %>% arrange(REP) %>% pull(Num)
+  distinct(REP, Num) %>% arrange(match(REP, rep_labels)) %>% pull(Num)
+stopifnot(length(N1) == nrepl, length(N2) == nrepl)
 
 # Frequency arrays: W x nrepl x nF
 # pivot_wider once for the full chromosome then reshape
@@ -89,11 +117,18 @@ p_wide <- freq_chr %>%
   select(pos, TRT, REP, founder, freq) %>%
   pivot_wider(names_from = founder, values_from = freq)
 
+# Ordering is by rep_labels position, not by the label's own sort order, so the
+# arrays line up with N1/N2/ProportionSelect however the labels are spelled.
+# The length checks matter: array() recycles silently on a short vector, which
+# turns a ragged design into plausible-looking but shifted numbers.
 to_3d <- function(trt) {
   m <- p_wide %>% filter(TRT == trt) %>%
-    arrange(pos, REP) %>%
+    arrange(pos, match(REP, rep_labels)) %>%
     select(all_of(founder_names)) %>%
     as.matrix()                             # (W*nrepl) x nF, pos-major order
+  if (length(m) != nF * nrepl * W)
+    stop(sprintf("TRT==%s frequencies: got %d values, expected %d (nF=%d nrepl=%d W=%d)",
+                 trt, length(m), nF * nrepl * W, nF, nrepl, W))
   aperm(array(t(m), c(nF, nrepl, W)), c(3, 2, 1))  # W x nrepl x nF
 }
 P1 <- to_3d("C")
@@ -103,7 +138,10 @@ P2 <- to_3d("Z")
 # array() fills fi-major; sort order must be (pos, REP, fj, fi)
 to_4d <- function(trt) {
   v <- err_chr %>% filter(TRT == trt) %>%
-    arrange(pos, REP, fj, fi) %>% pull(v)
+    arrange(pos, match(REP, rep_labels), fj, fi) %>% pull(v)
+  if (length(v) != nF * nF * nrepl * W)
+    stop(sprintf("TRT==%s covariances: got %d values, expected %d (nF=%d nrepl=%d W=%d)",
+                 trt, length(v), nF * nF * nrepl * W, nF, nrepl, W))
   aperm(array(v, c(nF, nF, nrepl, W)), c(4, 1, 2, 3))  # W x fi x fj x nrepl
 }
 E1 <- to_4d("C")
@@ -147,7 +185,7 @@ scan_list <- lapply(seq_len(W), function(w) {
 
   # Heritability
   h2 <- tryCatch(
-    Heritability(p1, p2, nrepl, ProportionSelect, AF_CUTOFF),
+    Heritability(p1, p2, rep_labels, ProportionSelect, AF_CUTOFF),
     error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_)
   )
 

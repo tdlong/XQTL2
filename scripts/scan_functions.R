@@ -143,12 +143,24 @@ add_genetic = function(df){
 	df
 	}
 
-Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
+Heritability = function(p1, p2, rep_labels, ProportionSelect, af_cutoff){
+	# rep_labels are the replicate LABELS for the rows of p1/p2, in row order.
+	# REP is a label throughout the pipeline -- arbitrary, not necessarily
+	# numeric, and not necessarily a complete 1..n run: replicates get dropped.
+	# This used to rebuild REP as 1:nrepl and join ProportionSelect by that
+	# invented index, which silently discarded every replicate whose label was
+	# not literally its position (XQTL2 #32).  Matching on the real label makes
+	# dropped replicates and non-numeric labels both work.
 	nF = ncol(p1)
+	nrepl = length(rep_labels)
+	stopifnot(nrow(p1) == nrepl, nrow(p2) == nrepl)
+	props = ProportionSelect$Proportion[match(rep_labels, ProportionSelect$REP)]
+	repcol = rep(rep_labels, each=nF)
 	tdf = data.frame(freq=c(as.numeric(t(p1)),as.numeric(t(p2))),
 		founder=rep(1:nF,2*nrepl),
 		TRT = c(rep("C",nF*nrepl),rep("Z",nF*nrepl)),
-		REP = c(rep(1:nrepl,each=nF),rep(1:nrepl,each=nF)))
+		REP = c(repcol,repcol),
+		Proportion = rep(props, each=nF))
 
 	Falconer_H2 = tdf %>%
 		pivot_wider(names_from = TRT, values_from = freq) %>%
@@ -156,9 +168,8 @@ Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
 		mutate(mean_af_C = case_when(C <= af_cutoff ~ af_cutoff, .default = C)) %>%
 		mutate(H2temp = mean_diff_sq/mean_af_C) %>%
 		group_by(REP) %>%
-		summarize(H2temp_sum = sum(H2temp)) %>%
+		summarize(H2temp_sum = sum(H2temp), Proportion = first(Proportion)) %>%
 		ungroup() %>%
-		left_join(ProportionSelect,by="REP") %>%
 		filter(!is.na(Proportion)) %>%
 		mutate(Falcon_i = dnorm(qnorm(1-Proportion))/Proportion) %>%
 		group_by(REP) %>%
@@ -169,7 +180,6 @@ Heritability = function(p1, p2, nrepl, ProportionSelect, af_cutoff){
 			
 	Cutler_H2 = tdf %>%
 		pivot_wider(names_from = TRT, values_from = freq) %>%
-		left_join(ProportionSelect,by="REP") %>%
 		filter(!is.na(Proportion)) %>%
 		mutate(Penetrance = (Z * Proportion)/C) %>%
 		mutate(Penetrance = case_when(Penetrance <= Proportion/2 ~ Proportion/2,
@@ -218,23 +228,34 @@ doscan = function(df,chr,Nfounders){
 		rename(Haps=Haps_mean,Num=Num_mean,Err=Err_mean)
 
 	## these summaries of the data are pretty useful for tests
-	p1 = df3 %>% filter(TRT=="C") %>% pull(Haps) %>% as.data.frame() %>% as.matrix() %>% t() 
+	## REP is a LABEL, not an index -- arbitrary, and replicates get dropped.
+	## Align the two arms on the labels present in BOTH, so a replicate missing
+	## from one arm removes that pair instead of silently shifting the arms
+	## against each other.  (The old code took each arm's rows in whatever order
+	## they came and only compared the two counts in a dangling expression that
+	## did nothing.)
+	c3 = df3 %>% filter(TRT=="C")
+	z3 = df3 %>% filter(TRT=="Z")
+	rep_labels = intersect(c3$REP, z3$REP)
+	if(length(rep_labels)==0){ return(ll) }
+	c3 = c3 %>% filter(REP %in% rep_labels) %>% arrange(match(REP, rep_labels))
+	z3 = z3 %>% filter(REP %in% rep_labels) %>% arrange(match(REP, rep_labels))
+	nrepl = length(rep_labels)
+	p1 = c3 %>% pull(Haps) %>% as.data.frame() %>% as.matrix() %>% t()
 	row.names(p1) <- NULL
-	p2 = df3 %>% filter(TRT=="Z") %>% pull(Haps) %>% as.data.frame() %>% as.matrix() %>% t()
+	p2 = z3 %>% pull(Haps) %>% as.data.frame() %>% as.matrix() %>% t()
 	row.names(p2) <- NULL
-	covar1 = do.call(abind, c(df3 %>% filter(TRT=="C") %>% pull(Err), along = 3))
-	covar2 = do.call(abind, c(df3 %>% filter(TRT=="Z") %>% pull(Err), along = 3))
-	nrepl = df3 %>% filter(TRT=="C") %>% nrow()
-	nrepl == df3 %>% filter(TRT=="Z") %>% nrow()
-	N1 = df3 %>% filter(TRT=="C") %>% pull(Num)
-	N2 = df3 %>% filter(TRT=="Z") %>% pull(Num)
+	covar1 = do.call(abind, c(c3 %>% pull(Err), along = 3))
+	covar2 = do.call(abind, c(z3 %>% pull(Err), along = 3))
+	N1 = c3 %>% pull(Num)
+	N2 = z3 %>% pull(Num)
 
 	wt=wald.test3(p1,p2,covar1,covar2,nrepl,N1,N2)
 	Wald_log10p = -log10(wt$p.value)
 	Pseu_log10p = pseudoN.test(p1,p2,covar1,covar2,nrepl,N1,N2)
 
 	af_cutoff = 0.01     # 1% --- heritability estimators can be off for really low allele frequencies
-	temp = Heritability(p1, p2, nrepl, ProportionSelect, af_cutoff)
+	temp = Heritability(p1, p2, rep_labels, ProportionSelect, af_cutoff)
 	Falc_H2 = temp$Falconer_H2
 	Cutl_H2 = temp$Cutler_H2
 
