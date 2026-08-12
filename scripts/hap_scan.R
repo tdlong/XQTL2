@@ -183,17 +183,25 @@ scan_list <- lapply(seq_len(W), function(w) {
   trafo <- diag(1/sqrt(eval)) %*% t(eg$vectors[,1:df])
   tstat <- sum((trafo %*% (p1p - p2p))^2)
 
-  # Heritability
+  # Heritability. covar1/covar2/N1/N2 are passed so the squaring bias can be
+  # propagated from the same covariance the Wald test just used (XQTL2 #34).
   h2 <- tryCatch(
-    Heritability(p1, p2, rep_labels, ProportionSelect, AF_CUTOFF),
-    error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_)
+    Heritability(p1, p2, rep_labels, ProportionSelect, AF_CUTOFF,
+                 covar1, covar2, N1, N2),
+    error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_,
+                             Falconer_H2_bias = NA_real_,
+                             Cutler_H2_bias = NA_real_,
+                             Cutler_clamp_frac = NA_real_)
   )
 
-  list(chr         = mychr,
-       pos         = win_pos[w],
-       Wald_log10p = -log10(pchisq(tstat / R2_SMOOTH, df, lower.tail = FALSE)),
-       Falc_H2     = h2$Falconer_H2,
-       Cutl_H2     = h2$Cutler_H2)
+  list(chr             = mychr,
+       pos             = win_pos[w],
+       Wald_log10p     = -log10(pchisq(tstat / R2_SMOOTH, df, lower.tail = FALSE)),
+       Falc_H2         = h2$Falconer_H2,
+       Cutl_H2         = h2$Cutler_H2,
+       Falc_H2_bias    = h2$Falconer_H2_bias,
+       Cutl_H2_bias    = h2$Cutler_H2_bias,
+       Cutl_clamp_frac = h2$Cutler_clamp_frac)
 })
 
 scan_results <- bind_rows(Filter(Negate(is.null), scan_list))

@@ -143,7 +143,18 @@ add_genetic = function(df){
 	df
 	}
 
-Heritability = function(p1, p2, rep_labels, ProportionSelect, af_cutoff){
+# 7-point Gauss-Hermite nodes/weights, used to integrate E[Affect^2] through the
+# penetrance clamp in Heritability().  For X ~ N(mu, s^2),
+#   E[f(X)] = (1/sqrt(pi)) * sum_k w_k f(mu + sqrt(2) s x_k)
+GH_NODES = c(0, 0.8162878828589647, -0.8162878828589647,
+             1.673551628767471, -1.673551628767471,
+             2.651961356835233, -2.651961356835233)
+GH_WEIGHTS = c(0.8102646175568073, 0.4256072526101278, 0.4256072526101278,
+               0.05451558281912703, 0.05451558281912703,
+               0.0009717812450995192, 0.0009717812450995192)
+
+Heritability = function(p1, p2, rep_labels, ProportionSelect, af_cutoff,
+			covar1=NULL, covar2=NULL, N1=NULL, N2=NULL){
 	# rep_labels are the replicate LABELS for the rows of p1/p2, in row order.
 	# REP is a label throughout the pipeline -- arbitrary, not necessarily
 	# numeric, and not necessarily a complete 1..n run: replicates get dropped.
@@ -193,7 +204,80 @@ Heritability = function(p1, p2, rep_labels, ProportionSelect, af_cutoff){
 		summarize(mH2 = mean(H2)) %>%
 		pull(mH2)
 
-	list(Falconer_H2=Falconer_H2, Cutler_H2=Cutler_H2)
+	# ── Upward bias from squaring a noisy estimate (XQTL2 #34) ───────────────
+	# Both estimators square a quantity that carries sampling error, and
+	#   E[x^2] = x_true^2 + Var(x)
+	# so every replicate is inflated by the same offset b.  Averaging over
+	# replicates cuts the variance of H2 but not b, which is why H2 has a
+	# positive floor genome-wide.  b is reported, not subtracted: H2 itself is
+	# left exactly as it was.
+	#
+	# Var of each arm's founder frequencies = lsei reconstruction error (covar)
+	# + multinomial sampling of that arm's own flies.  mn.covmat is evaluated at
+	# the arm's own frequencies, not the pooled null frequencies the Wald test
+	# uses, because this is the variance of the estimate actually squared.
+	# C and Z are separate pools, so Cov(C,Z)=0 and no cross term appears.
+	Falconer_H2_bias = NA_real_
+	Cutler_H2_bias   = NA_real_
+	Cutler_clamp_frac = NA_real_
+	if(!is.null(covar1) && !is.null(covar2) && !is.null(N1) && !is.null(N2)){
+		bF = rep(NA_real_, nrepl)
+		bC = rep(NA_real_, nrepl)
+		n_clamped = 0L; n_total = 0L
+		for(r in seq_len(nrepl)){
+			P = props[r]
+			if(is.na(P)) next
+			Cf = p1[r,]; Zf = p2[r,]
+			vC = diag(mn.covmat(Cf, 2*N1[r]) + covar1[,,r])
+			vZ = diag(mn.covmat(Zf, 2*N2[r]) + covar2[,,r])
+
+			# Falconer squares (Z-C) directly, so the bias is exact:
+			#   E[(Zhat-Chat)^2] = (Z-C)^2 + Var(Z) + Var(C)
+			Falcon_i = dnorm(qnorm(1-P))/P
+			bF[r] = 200 * sum((vZ + vC)/pmax(Cf, af_cutoff)) / Falcon_i^2
+
+			# Cutler squares Affect, a nonlinear function of the frequencies:
+			#   Pen    = P*Z/C          clamped to [P/2, 2P]
+			#   Affect = qnorm(1-P) - qnorm(1-Pen)
+			#
+			# The delta method is unusable here.  Var(Pen) carries a 1/C^4
+			# term, and C is at the lsei floor (3e-4) for at least one founder
+			# in most windows, so the linearisation diverges -- it returned a
+			# bias 14x larger than H2 itself on real data.  The clamp is what
+			# actually keeps the estimator finite, and a linearisation cannot
+			# see a clamp.  So integrate through it instead: Gauss-Hermite
+			# quadrature of E[Affect^2] over Pen ~ N(Pen_raw, var_Pen), with the
+			# clamp applied inside the integrand.  Affect is then bounded by
+			# the clamp, so the bias is bounded too.
+			Pen_raw = (Zf * P)/Cf
+			Pen_hat = pmin(pmax(Pen_raw, P/2), 2*P)
+			var_Pen = (P/Cf)^2 * vZ + (P*Zf/Cf^2)^2 * vC
+			sd_Pen  = sqrt(pmax(var_Pen, 0))
+			qP      = qnorm(1-P)
+
+			EA2 = numeric(nF)
+			for(k in seq_along(GH_NODES)){
+				Pk = Pen_raw + sqrt(2)*sd_Pen*GH_NODES[k]
+				n_clamped = n_clamped + GH_WEIGHTS[k]*sum(Pk < P/2 | Pk > 2*P)
+				n_total   = n_total + GH_WEIGHTS[k]*nF
+				Pk = pmin(pmax(Pk, P/2), 2*P)
+				EA2 = EA2 + GH_WEIGHTS[k] * (qP - qnorm(1-Pk))^2
+				}
+			EA2 = EA2/sqrt(pi)
+
+			A_hat = qP - qnorm(1-Pen_hat)
+			bC[r] = 200 * sum(Cf * (EA2 - A_hat^2))
+			}
+		Falconer_H2_bias  = mean(bF, na.rm=TRUE)
+		Cutler_H2_bias    = mean(bC, na.rm=TRUE)
+		# Where the penetrance clamp binds the delta method is unreliable --
+		# it linearises a hard nonlinearity.  Report how often that happened.
+		Cutler_clamp_frac = if(n_total>0) n_clamped/n_total else NA_real_
+		}
+
+	list(Falconer_H2=Falconer_H2, Cutler_H2=Cutler_H2,
+		Falconer_H2_bias=Falconer_H2_bias, Cutler_H2_bias=Cutler_H2_bias,
+		Cutler_clamp_frac=Cutler_clamp_frac)
 	}
 
 doscan = function(df,chr,Nfounders){
@@ -255,7 +339,8 @@ doscan = function(df,chr,Nfounders){
 	Pseu_log10p = pseudoN.test(p1,p2,covar1,covar2,nrepl,N1,N2)
 
 	af_cutoff = 0.01     # 1% --- heritability estimators can be off for really low allele frequencies
-	temp = Heritability(p1, p2, rep_labels, ProportionSelect, af_cutoff)
+	temp = Heritability(p1, p2, rep_labels, ProportionSelect, af_cutoff,
+			covar1, covar2, N1, N2)
 	Falc_H2 = temp$Falconer_H2
 	Cutl_H2 = temp$Cutler_H2
 
