@@ -256,14 +256,12 @@ err_smoothed <- err_unnested %>%
 
 # ── Save smoothed data for steps 2 and 3 ─────────────────────────────────────
 founder_names <- sort(unique(freq_smoothed$founder))
-nrepl         <- n_distinct(freq_smoothed$REP)
 
 cat("Writing smoothed RDS:", fileout_rds, "\n")
 saveRDS(
   list(freq          = freq_smoothed,
        err           = err_smoothed,
-       founder_names = founder_names,
-       nrepl         = nrepl),
+       founder_names = founder_names),
   fileout_rds
 )
 
