@@ -597,8 +597,14 @@ bash pipeline/scripts/run_snp_scan.sh \
 ```
 
 Founder names come from `--parfile` — the same file `REFALT2haps` used — so the
-SNP scan cannot be handed a different founder set than the haplotype fit. Use the
-same `--scan` name as Step 5a. Options mirror `run_scan.sh`.
+SNP scan cannot be handed a different founder set than the haplotype fit.
+
+Use the same `--scan` and the same `--design` as Step 5a. **The contrast is fixed
+at Step 5a**, not here: `smooth_haps.R` joined the design file and wrote `TRT`/`REP`
+into the smoothed data, and that is what gets tested. `--design` here is a
+cross-check — if it does not match the smoothed data, the scan stops and tells you.
+To scan a different design, re-run `run_scan.sh` with it under a new `--scan` name
+and point this at that.
 
 With `run_full_pipeline.sh`, add `--snp-scan` instead; it needs no extra inputs.
 

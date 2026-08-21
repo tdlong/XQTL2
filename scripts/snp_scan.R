@@ -92,6 +92,26 @@ cat(sprintf("Replicates used (%d): %s\n", nrepl, paste(rep_labels, collapse = ",
 freq_smoothed <- freq_smoothed %>% filter(REP %in% rep_labels)
 err_smoothed  <- err_smoothed  %>% filter(REP %in% rep_labels)
 
+# The contrast is fixed at Step 5a: smooth_haps.R joined the design file and
+# wrote TRT/REP into this RDS, and that is what is tested above. --rfile here is
+# therefore a cross-check, not a selector -- handing this scan a different design
+# than the smooth step used cannot change which samples are contrasted, so say so
+# instead of silently ignoring it.
+des_pairs <- design.df %>% filter(TRT %in% c("C","Z")) %>%
+  distinct(TRT, REP) %>% mutate(k = paste(TRT, REP)) %>% pull(k) %>% sort()
+rds_pairs <- freq_smoothed %>% distinct(TRT, REP) %>%
+  mutate(k = paste(TRT, REP)) %>% pull(k) %>% sort()
+if (!identical(des_pairs, rds_pairs)) {
+  only_d <- setdiff(des_pairs, rds_pairs); only_r <- setdiff(rds_pairs, des_pairs)
+  stop("design file does not match the smoothed data this scan runs on.\n",
+       "  ", basename(parsed$rfile), ": ", paste(des_pairs, collapse = ", "), "\n",
+       "  ", basename(filein), ": ", paste(rds_pairs, collapse = ", "), "\n",
+       if (length(only_d)) paste0("  only in design: ", paste(only_d, collapse=", "), "\n"),
+       if (length(only_r)) paste0("  only in RDS   : ", paste(only_r, collapse=", "), "\n"),
+       "The contrast is set when smooth_haps.R runs. To scan a different design,\n",
+       "re-run run_scan.sh with it under a new --scan name, then this scan on that.")
+}
+
 # Window positions for nearest-join
 win_positions <- freq_smoothed %>%
   distinct(CHROM, pos) %>%
