@@ -25,10 +25,13 @@
 #       --design    helpfiles/<project>/design.txt \
 #       --scan      <scan_name> \
 #       --founders  A \
-#       --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
 #       --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 #
 # --catalog defaults to process/<project>/Catalog.
+#
+# --founder-list turns on the SNP scan (Step 5b). Its founder table is built
+# from the catalog automatically; pass --snp-table only to override that with a
+# pre-built table (e.g. to reproduce a pre-catalog analysis).
 #
 # Skip early steps if you already have BAMs or haplotypes:
 #       --skip-fq2bam         start at Step 3 (REFALT)
@@ -95,6 +98,10 @@ mkdir -p "${PROCESSDIR}"
 
 SLURM_COMMON="-A ${ACCOUNT}"
 
+# Needed by both the REFALT step and the SNP-table step below, so default it here
+# rather than inside the REFALT branch (which --skip-refalt skips).
+[[ -z "${CATALOG:-}" ]] && CATALOG="${PROCESSDIR}/Catalog"
+
 echo "=== XQTL full pipeline: ${PROJECT} / ${SCAN} ==="
 echo ""
 
@@ -128,8 +135,8 @@ if [[ "$SKIP_REFALT" == false ]]; then
         echo "Built ${BAMLIST} — review before results are final"
     fi
 
-    # Never built here — see the header. call_samples.sh errors out if it is missing.
-    [[ -z "${CATALOG:-}" ]] && CATALOG="${PROCESSDIR}/Catalog"
+    # The catalog itself is never built here — see the header. call_samples.sh
+    # errors out if it is missing.
 
     # call_samples.sh takes a bare job ID, not an sbatch --dependency string.
     AFTER_BAM_JID=""
@@ -172,15 +179,31 @@ scan_out=$(bash pipeline/scripts/run_scan.sh \
 jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
 echo "$scan_out" | sed 's/^/  /'
 
-# ── Step 5b: SNP scan (if snp-table provided) ──────────────────────────────
+# ── Step 5b: SNP scan (if --founder-list given) ─────────────────────────────
+# The SNP table must describe the same founder states the haplotypes were fit
+# against, so by default it is derived from the catalog here (XQTL2 #35). The
+# catalog does not exist yet when this script is launched, which is why the
+# table cannot simply be built beforehand. Pass --snp-table only to override
+# with a pre-built table, e.g. to reproduce a pre-catalog analysis.
 jid_snp=""
-if [[ -n "$SNP_TABLE" && -n "$FOUNDER_LIST" ]]; then
+if [[ -n "$FOUNDER_LIST" ]]; then
+    SNP_DEP="${jid_haps}"
+    if [[ -z "$SNP_TABLE" ]]; then
+        SNP_TABLE="${CATALOG}/snp_table.cM.txt.gz"
+        TBL_DEP=""
+        [[ -n "${jid_refalt:-}" ]] && TBL_DEP="--dependency=afterok:${jid_refalt}"
+        jid_tbl=$(sbatch --parsable ${TBL_DEP} ${SLURM_COMMON} \
+            -p "${PARTITION}" --cpus-per-task 1 --mem-per-cpu 8G --time=1:00:00 \
+            --wrap="module load R/4.2.2 && Rscript pipeline/scripts/catalog2snptable.R --catdir ${CATALOG} --out ${SNP_TABLE}")
+        echo "snp table:  ${jid_tbl}  (${SNP_TABLE})"
+        SNP_DEP="${jid_haps}:${jid_tbl}"
+    fi
     snp_out=$(bash pipeline/scripts/run_snp_scan.sh \
         --design "${DESIGN}" --dir "${PROCESSDIR}" --scan "${SCAN}" \
         --snp-table "${SNP_TABLE}" --founders "${FOUNDER_LIST}" \
         --mem-per-cpu "${MEM_PER_CPU}" --cpus-per-task "${CPUS_PER_TASK}" \
         -p "${PARTITION}" -A "${ACCOUNT}" \
-        --after "${jid_haps}")
+        --after "${SNP_DEP}")
     jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
     echo "$snp_out" | sed 's/^/  /'
 fi

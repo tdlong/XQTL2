@@ -594,6 +594,12 @@ catalog (`catalog.annot.tsv.gz`) for per-founder read depths, and
 use below. Rebuild it whenever you rebuild **or re-cut** the catalog — a re-cut
 changes which positions are in `catalog.tsv.gz`, so it changes the SNP table too.
 
+You only run this by hand when driving the steps individually. `run_full_pipeline.sh`
+builds the table itself — pass `--founder-list` to turn the SNP scan on and it
+writes `<catalog>/snp_table.cM.txt.gz` and chains the scan behind it. (It has to:
+the catalog does not exist yet when that script is launched, so the table cannot
+be built in advance.)
+
 > **Older projects.** Runs predating the founder-catalog caller used
 > `FREQ_SNPs_{A,B}pop.cM.txt.gz`, built by a method that is not this pipeline and
 > is not reproducible from it. Those files are no longer tracked in the repo
@@ -825,7 +831,6 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/heatshock/design.txt \
     --scan         heatshock_smooth250 \
     --founders     A \
-    --snp-table    helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -859,7 +864,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt --after ${JID_REFALT} \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design.txt --scan heatshock_v2 \
-    --founders A --snp-table helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
+    --founders A \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -877,7 +882,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt --skip-haps \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_subset.txt --scan heatshock_subset \
-    --founders A --snp-table helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
+    --founders A \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -995,7 +1000,6 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design      helpfiles/malathion/design.txt \
     --scan        malathion_smooth250 \
     --founders    A \
-    --snp-table   helpfiles/malathion/malathion_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -1078,7 +1082,6 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/<project>/design.txt \
     --scan         <project>_6rep_smooth250 \
     --founders     A \
-    --snp-table    helpfiles/<project>/<project>_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -1125,7 +1128,9 @@ LongLab-XQTL/                   ← your project repo (any name)
 └── process/<project>/          (not tracked) — organized into stage subfolders
     ├── Catalog/                 SNP catalog (founder-catalog caller)
     │   ├── catalog.annot.tsv.gz
-    │   └── catalog.tsv.gz
+    │   ├── catalog.founders.txt
+    │   ├── catalog.tsv.gz
+    │   └── snp_table.cM.txt.gz
     ├── Calls/                   the ref/alt step
     │   ├── counts/<sample>.tsv.gz
     │   └── RefAlt.<chr>.txt
@@ -1342,6 +1347,8 @@ process/<project>/
 ├── Catalog/                       built by build_catalog.sh
 │   ├── catalog.annot.tsv.gz       all candidate SNPs + annotations (re-cuttable source)
 │   ├── catalog.tsv.gz (+ .tbi)    the -T positions file under the chosen thresholds
+│   ├── catalog.founders.txt       founder names in catalog column order
+│   ├── snp_table.cM.txt.gz        per-founder ALT freqs for the SNP scan (catalog2snptable.R)
 │   ├── founders.bams.txt          the founder set that defined it
 │   └── catalog.stats.txt          per-rule SNP tally
 ├── Calls/                         written by call_samples.sh
