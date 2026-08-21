@@ -131,6 +131,16 @@ fill_gaps <- function(x, h) {
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 filein <- file.path(parsed$dir, "Haps", paste0("R.haps.", mychr, ".out.rds"))
+
+# Same guard REFALT2haps.R carries. This is the more likely place to hit it:
+# REFALT2haps is skipped whenever haplotypes already exist -- the normal case for
+# an old project, and the one the README recommends -- so the guarded script is
+# the one that gets bypassed and this is where the operator lands (XQTL2 #31).
+if (!file.exists(filein) &&
+    file.exists(file.path(parsed$dir, paste0("R.haps.", mychr, ".out.rds"))))
+  stop("This project uses the old flat layout (R.haps in ", parsed$dir, "/). Run:\n",
+       "  bash pipeline/scripts/reorganize_project.sh ", parsed$dir, "\nthen rerun.")
+
 cat("Reading", filein, "\n")
 xx1 <- readRDS(filein)
 

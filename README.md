@@ -1132,6 +1132,15 @@ flat in `process/<project>/`. Migrate one in place (no recompute) with:
 bash pipeline/scripts/reorganize_project.sh process/<project>
 ```
 
+It checks the whole plan before moving anything, so the project either migrates or
+it does not. A top-level `RefAlt.<chr>.txt` that is already a symlink into `Calls/`
+is recognised as migrated and left alone. If a file exists at both the top level
+and in its stage folder and the two differ, the run is refused and every conflict
+reported rather than overwriting — that combination means the project was
+re-called with `call_samples.sh` while the legacy flat files were still present,
+and the copies in `Calls/` are normally the ones you want. Pass `--force` to
+overwrite with the top-level copies anyway.
+
 To check what exists for a project on the cluster:
 
 ```bash
