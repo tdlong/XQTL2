@@ -25,13 +25,12 @@
 #       --design    helpfiles/<project>/design.txt \
 #       --scan      <scan_name> \
 #       --founders  A \
-#       --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+#       --snp-scan
 #
 # --catalog defaults to process/<project>/Catalog.
 #
-# --founder-list turns on the SNP scan (Step 5b). Its founder table is built
-# from the catalog automatically; pass --snp-table only to override that with a
-# pre-built table (e.g. to reproduce a pre-catalog analysis).
+# --snp-scan adds the SNP scan (Step 5b). It needs no extra inputs: founder
+# states are read from RefAlt, and founder names from --parfile.
 #
 # Skip early steps if you already have BAMs or haplotypes:
 #       --skip-fq2bam         start at Step 3 (REFALT)
@@ -53,6 +52,7 @@ ACCOUNT=tdlong_lab
 SKIP_FQ2BAM=false
 SKIP_REFALT=false
 SKIP_HAPS=false
+SNP_SCAN=false
 AFTER_HAPS=""
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
@@ -68,8 +68,7 @@ while [[ $# -gt 0 ]]; do
     --scan)          SCAN="$2";          shift 2 ;;
     --smooth)        SMOOTH_KB="$2";     shift 2 ;;
     --founders)      FOUNDERS="$2";      shift 2 ;;  # A or B
-    --snp-table)     SNP_TABLE="$2";     shift 2 ;;
-    --founder-list)  FOUNDER_LIST="$2";  shift 2 ;;
+    --snp-scan)      SNP_SCAN=true;      shift ;;
     --mem-per-cpu)   MEM_PER_CPU="$2";   shift 2 ;;
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
     -p|--partition)  PARTITION="$2";     shift 2 ;;
@@ -179,31 +178,17 @@ scan_out=$(bash pipeline/scripts/run_scan.sh \
 jid_hap=$(echo "$scan_out" | grep "^done:" | awk '{print $2}')
 echo "$scan_out" | sed 's/^/  /'
 
-# ── Step 5b: SNP scan (if --founder-list given) ─────────────────────────────
-# The SNP table must describe the same founder states the haplotypes were fit
-# against, so by default it is derived from the catalog here (XQTL2 #35). The
-# catalog does not exist yet when this script is launched, which is why the
-# table cannot simply be built beforehand. Pass --snp-table only to override
-# with a pre-built table, e.g. to reproduce a pre-catalog analysis.
+# ── Step 5b: SNP scan (--snp-scan) ──────────────────────────────────────────
+# Founder states come from RefAlt, which the haplotypes were also fit from, so
+# there is nothing extra to build or pass (XQTL2 #35).
 jid_snp=""
-if [[ -n "$FOUNDER_LIST" ]]; then
-    SNP_DEP="${jid_haps}"
-    if [[ -z "$SNP_TABLE" ]]; then
-        SNP_TABLE="${CATALOG}/snp_table.cM.txt.gz"
-        TBL_DEP=""
-        [[ -n "${jid_refalt:-}" ]] && TBL_DEP="--dependency=afterok:${jid_refalt}"
-        jid_tbl=$(sbatch --parsable ${TBL_DEP} ${SLURM_COMMON} \
-            -p "${PARTITION}" --cpus-per-task 1 --mem-per-cpu 8G --time=1:00:00 \
-            --wrap="module load R/4.2.2 && Rscript pipeline/scripts/catalog2snptable.R --catdir ${CATALOG} --out ${SNP_TABLE}")
-        echo "snp table:  ${jid_tbl}  (${SNP_TABLE})"
-        SNP_DEP="${jid_haps}:${jid_tbl}"
-    fi
+if [[ "$SNP_SCAN" == true ]]; then
     snp_out=$(bash pipeline/scripts/run_snp_scan.sh \
         --design "${DESIGN}" --dir "${PROCESSDIR}" --scan "${SCAN}" \
-        --snp-table "${SNP_TABLE}" --founders "${FOUNDER_LIST}" \
+        --parfile "${PARFILE}" \
         --mem-per-cpu "${MEM_PER_CPU}" --cpus-per-task "${CPUS_PER_TASK}" \
         -p "${PARTITION}" -A "${ACCOUNT}" \
-        --after "${SNP_DEP}")
+        --after "${jid_haps}")
     jid_snp=$(echo "$snp_out" | grep "^done:" | awk '{print $2}')
     echo "$snp_out" | sed 's/^/  /'
 fi
@@ -219,7 +204,7 @@ FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_5panel.R --scan ${SCAN_DIR}
 FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_manhattan.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.manhattan.png --format powerpoint --threshold 10"
 FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_H2_overlay.R --scan ${SCAN_DIR}/${SCAN}.scan.txt --out ${SCAN_DIR}/${SCAN}.H2.png --format powerpoint"
 
-if [[ -n "$SNP_TABLE" ]]; then
+if [[ "$SNP_SCAN" == true ]]; then
     FIG_CMD="${FIG_CMD} && Rscript pipeline/scripts/plot_freqsmooth_snp.R --scan ${SCAN_DIR}/${SCAN}.snp_scan.txt --out ${SCAN_DIR}/${SCAN}.snp.wald.png --format powerpoint --threshold 10"
 fi
 

@@ -10,8 +10,7 @@
 #       --design    helpfiles/<project>/design.txt \
 #       --dir       process/<project> \
 #       --scan      <scan_name> \
-#       --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-#       --founders       A1,A2,A3,A4,A5,A6,A7,AB8 \
+#       --parfile   helpfiles/<project>/hap_params.R \
 #       --mem-per-cpu    6G \
 #       --cpus-per-task  2 \
 #       -p               highmem \
@@ -31,8 +30,7 @@ while [[ $# -gt 0 ]]; do
     --design)        DESIGN="$2";       shift 2 ;;
     --dir)           DIR="$2";          shift 2 ;;
     --scan)          SCAN="$2";         shift 2 ;;
-    --snp-table)     SNP_TABLE="$2";    shift 2 ;;
-    --founders)      FOUNDERS="$2";     shift 2 ;;
+    --parfile)       PARFILE="$2";      shift 2 ;;
     --mem-per-cpu)   MEM_PER_CPU="$2";  shift 2 ;;
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
     -p|--partition)  PARTITION="$2";    shift 2 ;;
@@ -47,11 +45,10 @@ missing=""
 [[ -z "$DESIGN" ]]    && missing="$missing --design"
 [[ -z "$DIR" ]]       && missing="$missing --dir"
 [[ -z "$SCAN" ]]      && missing="$missing --scan"
-[[ -z "$SNP_TABLE" ]] && missing="$missing --snp-table"
-[[ -z "$FOUNDERS" ]]  && missing="$missing --founders"
+[[ -z "$PARFILE" ]]   && missing="$missing --parfile"
 if [[ -n "$missing" ]]; then
     echo "Error: missing required arguments:$missing" >&2
-    echo "Usage: bash scripts/run_snp_scan.sh --design <file> --dir <dir> --scan <name> --snp-table <file> --founders <list> [options]" >&2
+    echo "Usage: bash scripts/run_snp_scan.sh --design <file> --dir <dir> --scan <name> --parfile <hap_params.R> [options]" >&2
     exit 1
 fi
 
@@ -68,8 +65,7 @@ jid_snp=$(sbatch --parsable ${DEP} \
     --rfile     "${DESIGN}" \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
-    --snp-table "${SNP_TABLE}" \
-    --founders  "${FOUNDERS}")
+    --parfile   "${PARFILE}")
 echo "snp_scan:   $jid_snp"
 
 # ── concat SNP scan chromosomes ──────────────────────────────────────────────

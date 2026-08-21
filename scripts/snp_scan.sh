@@ -17,8 +17,7 @@ while [[ $# -gt 0 ]]; do
     --rfile)     RFILE="$2";     shift 2 ;;
     --dir)       DIR="$2";       shift 2 ;;
     --outdir)    OUTDIR="$2";    shift 2 ;;
-    --snp-table) SNP_TABLE="$2"; shift 2 ;;
-    --founders)  FOUNDERS="$2";  shift 2 ;;
+    --parfile)   PARFILE="$2";   shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -28,5 +27,5 @@ Rscript pipeline/scripts/snp_scan.R \
     --dir        "${DIR}/Scans/${OUTDIR}" \
     --outdir     "${OUTDIR}"    \
     --rfile      "${RFILE}"     \
-    --snp-table  "${SNP_TABLE}" \
-    --founders   "${FOUNDERS}"
+    --refalt     "${DIR}/Calls/RefAlt.${mychr}.txt" \
+    --parfile    "${PARFILE}"

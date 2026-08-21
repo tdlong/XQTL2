@@ -567,60 +567,40 @@ smoothed haplotype estimates — it is not independent of the haplotype scan.
 
 `run_scan.sh` must have already run before starting the SNP scan.
 
-### SNP table — build it from your catalog
+### Founder states come from RefAlt
 
-The scan needs a per-founder ALT-frequency table: for each SNP, what each founder
-carries. **Build it from the catalog you called with** (Step 3). The imputation is
+Nothing to prepare. The imputation is
 
 ```
 f_ALT(pool, SNP) = h(pool, window) · s(SNP)
 ```
 
-where `h` comes from `RefAlt`, which was counted against the catalog. If `s` came
-from somewhere else, the two halves of that product would describe different
-ascertainments of the same founders, and SNPs the catalog rejected would still be
-scanned. Deriving `s` from the catalog keeps them consistent by construction.
+and both halves come out of `Calls/RefAlt.<chr>.txt`. Every SNP in RefAlt is
+there because it passed the catalog's founder filters in Step 3 — every founder
+covered, every founder near-fixed, and the site segregating among them — so the
+founder columns of RefAlt already are `s`. It is also the file the haplotypes
+were fit from, so `h` and `s` cannot describe different ascertainments.
 
-```bash
-Rscript pipeline/scripts/catalog2snptable.R \
-    --catdir process/<project>/Catalog \
-    --out    helpfiles/<project>_SNPs.cM.txt.gz
-```
-
-It reads the filtered catalog (`catalog.tsv.gz`) for the positions, the annotated
-catalog (`catalog.annot.tsv.gz`) for per-founder read depths, and
-`catalog.founders.txt` for the founder names and their order; it adds `cM` from
-`flymap.r6.txt` and prints the exact `--snp-table` and `--founders` arguments to
-use below. Rebuild it whenever you rebuild **or re-cut** the catalog — a re-cut
-changes which positions are in `catalog.tsv.gz`, so it changes the SNP table too.
-
-You only run this by hand when driving the steps individually. `run_full_pipeline.sh`
-builds the table itself — pass `--founder-list` to turn the SNP scan on and it
-writes `<catalog>/snp_table.cM.txt.gz` and chains the scan behind it. (It has to:
-the catalog does not exist yet when that script is launched, so the table cannot
-be built in advance.)
-
-> **Older projects.** Runs predating the founder-catalog caller used
-> `FREQ_SNPs_{A,B}pop.cM.txt.gz`, built by a method that is not this pipeline and
-> is not reproducible from it. Those files are no longer tracked in the repo
-> (commit `3be8127`) and about a quarter of their SNPs are non-segregating in the
-> founders — the scan discards those at run time, but they are not the catalog's
-> SNP set. Use `catalog2snptable.R` for anything new.
+This requires the founders to be *in* RefAlt, which means the founder BAM list
+must be part of the `--bamlist` you give `call_samples.sh`. `run_full_pipeline.sh`
+appends it for you; if you drive Step 3 by hand, append it yourself. The scan
+stops with a clear error if the founder columns are missing.
 
 ### Run the SNP scan
 
 ```bash
 bash pipeline/scripts/run_snp_scan.sh \
-    --design    helpfiles/<project>/design.txt \
-    --dir       process/<project> \
-    --scan      <scan_name> \
-    --snp-table helpfiles/<project>_SNPs.cM.txt.gz \
-    --founders  B1,B2,B3,B4,B5,B6,B7,AB8
+    --design  helpfiles/<project>/design.txt \
+    --dir     process/<project> \
+    --scan    <scan_name> \
+    --parfile helpfiles/<project>/hap_params.R
 ```
 
-`--founders` must name the same founders in the same order as the columns of
-`--snp-table`; `catalog2snptable.R` prints the correct list when it finishes.
-Use the same `--scan` name as Step 5a. Options mirror `run_scan.sh`.
+Founder names come from `--parfile` — the same file `REFALT2haps` used — so the
+SNP scan cannot be handed a different founder set than the haplotype fit. Use the
+same `--scan` name as Step 5a. Options mirror `run_scan.sh`.
+
+With `run_full_pipeline.sh`, add `--snp-scan` instead; it needs no extra inputs.
 
 ---
 
@@ -831,7 +811,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/heatshock/design.txt \
     --scan         heatshock_smooth250 \
     --founders     A \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-scan
 ```
 
 The script prints each SLURM job ID as it submits. When the final job
@@ -865,7 +845,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design.txt --scan heatshock_v2 \
     --founders A \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-scan
 ```
 
 Handing `run_full_pipeline.sh` a full `bam_list.txt` instead also gives correct
@@ -883,7 +863,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_subset.txt --scan heatshock_subset \
     --founders A \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-scan
 ```
 
 To run two scans from the same haplotypes (e.g. male and female), chain
@@ -1000,7 +980,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design      helpfiles/malathion/design.txt \
     --scan        malathion_smooth250 \
     --founders    A \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-scan
 ```
 
 This submits Steps 3–6 with SLURM dependency chaining and prints each job ID.
@@ -1082,7 +1062,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/<project>/design.txt \
     --scan         <project>_6rep_smooth250 \
     --founders     A \
-    --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-scan
 ```
 
 `--skip-refalt` because Step 3 already did it; `--after` chains the haplotype job
@@ -1106,7 +1086,6 @@ XQTL2/                          ← this repo (pipeline — clone once per machi
 │   ├── B_founders.bams.txt
 │   ├── flymap.r6.txt
 │   ├── het_bounds.txt
-│   ├── snp_tables/
 │   └── generic_haplotype_parameters.R
 ├── ref/                        # Reference genome (not tracked — set up once)
 └── data/founders/              # Founder BAMs (not tracked — set up once)
@@ -1129,8 +1108,7 @@ LongLab-XQTL/                   ← your project repo (any name)
     ├── Catalog/                 SNP catalog (founder-catalog caller)
     │   ├── catalog.annot.tsv.gz
     │   ├── catalog.founders.txt
-    │   ├── catalog.tsv.gz
-    │   └── snp_table.cM.txt.gz
+    │   └── catalog.tsv.gz
     ├── Calls/                   the ref/alt step
     │   ├── counts/<sample>.tsv.gz
     │   └── RefAlt.<chr>.txt
@@ -1348,7 +1326,6 @@ process/<project>/
 │   ├── catalog.annot.tsv.gz       all candidate SNPs + annotations (re-cuttable source)
 │   ├── catalog.tsv.gz (+ .tbi)    the -T positions file under the chosen thresholds
 │   ├── catalog.founders.txt       founder names in catalog column order
-│   ├── snp_table.cM.txt.gz        per-founder ALT freqs for the SNP scan (catalog2snptable.R)
 │   ├── founders.bams.txt          the founder set that defined it
 │   └── catalog.stats.txt          per-rule SNP tally
 ├── Calls/                         written by call_samples.sh

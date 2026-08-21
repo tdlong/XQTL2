@@ -6,8 +6,14 @@
 #
 #   f_ALT(pool, SNP) = h(pool, window)  ·  s(SNP)
 #
-# where h is the smoothed 8-founder frequency vector and s is the vector of
-# founder ALT states from FREQ_SNPs.cM.txt.gz.
+# where h is the smoothed founder frequency vector and s is the vector of founder
+# ALT frequencies, read straight out of RefAlt.
+#
+# No separate SNP table is involved. Every SNP in RefAlt is there because it
+# passed the catalog's founder filters -- every founder covered, every founder
+# near-fixed, and the site segregating among them -- so the founder columns of
+# RefAlt already are s. It is also the same file the haplotypes were fit from, so
+# the two halves of h . s cannot describe different ascertainments (XQTL2 #35).
 #
 # SNPs are grouped by their nearest haplotype window. Within each window group,
 # the frequency computation is a single matrix multiply (vectorized over all
@@ -16,10 +22,10 @@
 #
 # Usage:
 #   Rscript scripts/snp_scan.R \
-#       --chr chrX --dir process/proj/SCAN_NAME --outdir SCAN_NAME \
+#       --chr chrX --dir process/proj/Scans/SCAN_NAME --outdir SCAN_NAME \
 #       --rfile helpfiles/proj/design.txt \
-#       --snp-table FREQ_SNPs.cM.txt.gz \
-#       --founders A1,A2,A3,A4,A5,A6,A7,AB8
+#       --refalt process/proj/Calls/RefAlt.chrX.txt \
+#       --parfile helpfiles/proj/hap_params.R
 ###############################################################################
 
 suppressPackageStartupMessages({
@@ -39,17 +45,21 @@ while (i <= length(args)) {
     "--dir"       = { parsed$dir       <- args[i+1];                              i <- i+2L },
     "--outdir"    = { parsed$outdir    <- args[i+1];                              i <- i+2L },
     "--rfile"     = { parsed$rfile     <- args[i+1];                              i <- i+2L },
-    "--snp-table" = { parsed$snp_table <- args[i+1];                              i <- i+2L },
-    "--founders"  = { parsed$founders  <- strsplit(args[i+1], ",")[[1]];          i <- i+2L },
+    "--refalt"    = { parsed$refalt    <- args[i+1];                              i <- i+2L },
+    "--parfile"   = { parsed$parfile   <- args[i+1];                              i <- i+2L },
     stop(paste("Unknown argument:", args[i]))
   )
 }
 
 script_dir <- dirname(normalizePath(sub("--file=", "", grep("--file=", commandArgs(FALSE), value=TRUE))))
-mychr    <- parsed$chr
-founders <- parsed$founders
+mychr <- parsed$chr
 design.df <- read.table(parsed$rfile, header = TRUE)
 source(file.path(script_dir, "scan_functions.R"))
+
+# Founders come from the haplotype parameters file, the same one REFALT2haps used,
+# so the SNP scan cannot be given a different founder set than the haplotype fit.
+source(parsed$parfile)
+if (!exists("founders")) stop("No `founders` vector in ", parsed$parfile)
 
 filein        <- file.path(parsed$dir, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout       <- file.path(parsed$dir, paste0(parsed$outdir, ".snp_scan.", mychr, ".txt"))
@@ -90,17 +100,19 @@ win_positions <- freq_smoothed %>%
   pull(pos)
 W <- length(win_positions)
 
-# ── Load SNP table for this chromosome only ──────────────────────────────────
-# Filter during read to avoid loading the full multi-chromosome table into memory.
-cat("Reading SNP table for", mychr, "...\n")
-snp_header <- names(data.table::fread(parsed$snp_table, nrows = 0))
-snp_df <- data.table::fread(
-  cmd = sprintf("zcat %s | awk 'NR==1 || $1==\"%s\"'", parsed$snp_table, mychr)
-) %>% as_tibble()
-names(snp_df) <- snp_header
-cat(sprintf("  %d SNPs\n", nrow(snp_df)))
+# ── Founder ALT frequencies, straight from RefAlt ────────────────────────────
+cat("Reading", parsed$refalt, "\n")
+ra   <- data.table::fread(parsed$refalt, header = TRUE)
+need <- c("CHROM", "POS", paste0("REF_", founders), paste0("ALT_", founders))
+miss <- setdiff(need, names(ra))
+if (length(miss))
+  stop("RefAlt has no columns for: ", paste(miss, collapse = ", "),
+       "\nThe founders must be counted into RefAlt -- append the founder BAM list",
+       "\nto --bamlist when running call_samples.sh (see README Step 3).")
+ra <- ra[ra$CHROM == mychr, ..need]
+cat(sprintf("  %d SNPs on %s\n", nrow(ra), mychr))
 
-if (nrow(snp_df) == 0) {
+if (nrow(ra) == 0) {
   tibble(chr=character(), pos=integer(), Wald_log10p=numeric(),
          cM=numeric(), n_informative_founders=integer()) %>%
     write.table(fileout)
@@ -109,6 +121,23 @@ if (nrow(snp_df) == 0) {
     write.table(fileout_means)
   quit(save="no")
 }
+
+snp_df <- tibble(chr = ra$CHROM, pos = ra$POS)
+for (f in founders) {
+  r  <- as.numeric(ra[[paste0("REF_", f)]])
+  a  <- as.numeric(ra[[paste0("ALT_", f)]])
+  dp <- r + a
+  snp_df[[f]] <- ifelse(is.na(dp) | dp == 0, NA_real_, a / dp)
+}
+n_nocov <- sum(!complete.cases(snp_df[, founders]))
+if (n_nocov > 0) {
+  cat(sprintf("  dropping %d SNP(s) with a founder lacking reads\n", n_nocov))
+  snp_df <- snp_df[complete.cases(snp_df[, founders]), ]
+}
+
+# cM from the same map and interpolation the haplotype scan uses
+snp_df <- add_genetic(as.data.frame(snp_df)) %>% as_tibble()
+names(snp_df)[names(snp_df) == "pos"] <- "POS"
 
 # Founder state matrix: n_SNPs x nF
 S_mat <- as.matrix(snp_df[, founders])
