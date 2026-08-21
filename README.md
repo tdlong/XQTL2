@@ -28,7 +28,6 @@ a companion package for interactive graphical analysis of scan results.
 
 - All pipeline scripts (`scripts/`)
 - Founder BAM paths (`helpfiles/A_founders.bams.txt`) — paths relative to this repo
-- Per-founder SNP state tables for SNP frequency imputation (`helpfiles/FREQ_SNPs_Apop.cM.txt.gz`, `FREQ_SNPs_Bpop.cM.txt.gz`)
 - Physical-to-genetic map (`helpfiles/flymap.r6.txt`)
 - Heterochromatic boundary definitions (`helpfiles/het_bounds.txt`)
 - Generic haplotype parameter template (`helpfiles/generic_haplotype_parameters.R`)
@@ -568,11 +567,39 @@ smoothed haplotype estimates — it is not independent of the haplotype scan.
 
 `run_scan.sh` must have already run before starting the SNP scan.
 
-### SNP table
+### SNP table — build it from your catalog
 
-The scan requires per-founder SNP state tables — one-time preparation per
-population. See `pipeline/helpfiles/snp_tables/` for preparation details.
-Pre-built tables for A-pop and B-pop are included in this repo.
+The scan needs a per-founder ALT-frequency table: for each SNP, what each founder
+carries. **Build it from the catalog you called with** (Step 3). The imputation is
+
+```
+f_ALT(pool, SNP) = h(pool, window) · s(SNP)
+```
+
+where `h` comes from `RefAlt`, which was counted against the catalog. If `s` came
+from somewhere else, the two halves of that product would describe different
+ascertainments of the same founders, and SNPs the catalog rejected would still be
+scanned. Deriving `s` from the catalog keeps them consistent by construction.
+
+```bash
+Rscript pipeline/scripts/catalog2snptable.R \
+    --catdir process/<project>/Catalog \
+    --out    helpfiles/<project>_SNPs.cM.txt.gz
+```
+
+It reads the filtered catalog (`catalog.tsv.gz`) for the positions, the annotated
+catalog (`catalog.annot.tsv.gz`) for per-founder read depths, and
+`catalog.founders.txt` for the founder names and their order; it adds `cM` from
+`flymap.r6.txt` and prints the exact `--snp-table` and `--founders` arguments to
+use below. Rebuild it whenever you rebuild **or re-cut** the catalog — a re-cut
+changes which positions are in `catalog.tsv.gz`, so it changes the SNP table too.
+
+> **Older projects.** Runs predating the founder-catalog caller used
+> `FREQ_SNPs_{A,B}pop.cM.txt.gz`, built by a method that is not this pipeline and
+> is not reproducible from it. Those files are no longer tracked in the repo
+> (commit `3be8127`) and about a quarter of their SNPs are non-segregating in the
+> founders — the scan discards those at run time, but they are not the catalog's
+> SNP set. Use `catalog2snptable.R` for anything new.
 
 ### Run the SNP scan
 
@@ -581,10 +608,12 @@ bash pipeline/scripts/run_snp_scan.sh \
     --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
     --scan      <scan_name> \
-    --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founders  A1,A2,A3,A4,A5,A6,A7,AB8
+    --snp-table helpfiles/<project>_SNPs.cM.txt.gz \
+    --founders  B1,B2,B3,B4,B5,B6,B7,AB8
 ```
 
+`--founders` must name the same founders in the same order as the columns of
+`--snp-table`; `catalog2snptable.R` prints the correct list when it finishes.
 Use the same `--scan` name as Step 5a. Options mirror `run_scan.sh`.
 
 ---
@@ -796,7 +825,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/heatshock/design.txt \
     --scan         heatshock_smooth250 \
     --founders     A \
-    --snp-table    pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --snp-table    helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -830,7 +859,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt --after ${JID_REFALT} \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design.txt --scan heatshock_v2 \
-    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founders A --snp-table helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -848,7 +877,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --skip-fq2bam --skip-refalt --skip-haps \
     --project heatshock --parfile helpfiles/heatshock/hap_params.R \
     --design helpfiles/heatshock/design_subset.txt --scan heatshock_subset \
-    --founders A --snp-table pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --founders A --snp-table helpfiles/heatshock/heatshock_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -966,7 +995,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design      helpfiles/malathion/design.txt \
     --scan        malathion_smooth250 \
     --founders    A \
-    --snp-table   pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --snp-table   helpfiles/malathion/malathion_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -1049,7 +1078,7 @@ bash pipeline/scripts/run_full_pipeline.sh \
     --design       helpfiles/<project>/design.txt \
     --scan         <project>_6rep_smooth250 \
     --founders     A \
-    --snp-table    pipeline/helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
+    --snp-table    helpfiles/<project>/<project>_SNPs.cM.txt.gz \
     --founder-list A1,A2,A3,A4,A5,A6,A7,AB8
 ```
 
@@ -1074,8 +1103,6 @@ XQTL2/                          ← this repo (pipeline — clone once per machi
 │   ├── B_founders.bams.txt
 │   ├── flymap.r6.txt
 │   ├── het_bounds.txt
-│   ├── FREQ_SNPs_Apop.cM.txt.gz
-│   ├── FREQ_SNPs_Bpop.cM.txt.gz
 │   ├── snp_tables/
 │   └── generic_haplotype_parameters.R
 ├── ref/                        # Reference genome (not tracked — set up once)

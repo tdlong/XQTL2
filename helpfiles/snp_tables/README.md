@@ -1,46 +1,77 @@
-# SNP Tables for the SNP Scan
+# SNP tables for the SNP scan
 
-The SNP scan (Step 5c) needs a table of per-founder allele frequencies at every
-SNP. This is a **one-time** preparation step per population — you do not need to
-repeat it for each experiment.
+The SNP scan (**Step 5b**) imputes each pool's ALT frequency at a SNP as
 
-## Source file
-
-`FREQ_SNPs.cM.txt.gz` — a gzipped tab-delimited table with one row per SNP.
-Columns include chromosome, position, genetic map position (cM), and allele
-frequencies for all 15 founders (A1–A7, AB8, B1–B7). This file is produced
-from whole-genome sequencing of the founder lines and lives in `helpfiles/`.
-
-## Splitting by population
-
-The A-population and B-population use different founder sets, so each needs its
-own table. `scripts/prep_snp_table.R` extracts the relevant columns:
-
-```bash
-Rscript scripts/prep_snp_table.R helpfiles/FREQ_SNPs.cM.txt.gz
+```
+f_ALT(pool, SNP) = h(pool, window) · s(SNP)
 ```
 
-This writes two files next to the input:
+`h` is the smoothed founder haplotype frequency vector. `s` is the vector of
+per-founder ALT frequencies at that SNP, and is what this table supplies.
 
-| File | Founders |
-|------|----------|
-| `helpfiles/FREQ_SNPs_Apop.cM.txt.gz` | A1 A2 A3 A4 A5 A6 A7 AB8 |
-| `helpfiles/FREQ_SNPs_Bpop.cM.txt.gz` | AB8 B1 B2 B3 B4 B5 B6 B7 |
+## Build it from your catalog
 
-AB8 is shared between both populations and appears in both files.
-
-## Using the SNP table in the pipeline
-
-Pass the appropriate population file to `snp_scan.sh` with `--snp-table`:
+`h` is derived from `RefAlt`, which is counted against the SNP catalog. So `s`
+must come from the same catalog — otherwise the two halves of that product are
+different ascertainments of the same founders, and the scan tests SNPs the caller
+rejected.
 
 ```bash
-sbatch --array=1-5 scripts/snp_scan.sh \
-    --rfile     helpfiles/<project>/design.txt \
+Rscript scripts/catalog2snptable.R \
+    --catdir process/<project>/Catalog \
+    --out    helpfiles/<project>_SNPs.cM.txt.gz
+```
+
+Inputs, all produced by Step 3:
+
+| File | Supplies |
+|---|---|
+| `catalog.tsv.gz` | the positions — exactly the sites samples were counted at |
+| `catalog.annot.tsv.gz` | per-founder read depths (`AD_<founder>`) |
+| `catalog.founders.txt` | founder names, in catalog column order |
+
+`cM` is interpolated from `helpfiles/flymap.r6.txt` using the same smoothing the
+scans use. Output schema:
+
+```
+CHROM  POS  <founder1> ... <founderN>  cM
+```
+
+The script prints the `--snp-table` and `--founders` arguments to pass on. There
+is no A/B split step: a catalog is built for one population, so its table already
+carries the right founder set.
+
+**Rebuild after any catalog change.** A re-cut with different `--min-dp`,
+`--maxaf` or `--snpgap` changes which positions are in `catalog.tsv.gz`, and the
+SNP table must change with it. It is cheap — no founder recall.
+
+## Using it
+
+```bash
+bash scripts/run_snp_scan.sh \
+    --design    helpfiles/<project>/design.txt \
     --dir       process/<project> \
-    --outdir    <scan_name> \
-    --snp-table helpfiles/FREQ_SNPs_Apop.cM.txt.gz \
-    --founders  A1,A2,A3,A4,A5,A6,A7,AB8
+    --scan      <scan_name> \
+    --snp-table helpfiles/<project>_SNPs.cM.txt.gz \
+    --founders  B1,B2,B3,B4,B5,B6,B7,AB8
 ```
 
-The `--founders` argument must list the same founders in the same order as the
-columns in the SNP table (excluding CHROM, POS, and cM).
+`--founders` must list the same founders in the same order as the table's
+columns. Use the same `--scan` name as Step 5a; `run_scan.sh` must have finished
+first. `run_snp_scan.sh` submits the SLURM array itself — do not call
+`snp_scan.sh` directly.
+
+## Older projects: FREQ_SNPs_*.cM.txt.gz
+
+Runs predating the founder-catalog caller used
+`FREQ_SNPs_{A,B}pop.cM.txt.gz`, split out of a whole-genome founder table by
+`scripts/prep_snp_table.R`. That table was not produced by this pipeline, its
+filters are not recorded, and it is no longer tracked in the repo (commit
+`3be8127`). Measured against the catalog's own founder filters, about 24% of its
+SNPs are non-segregating among the founders and ~5% have a founder at
+intermediate frequency. The scan drops non-segregating sites at run time
+(`snp_scan.R:192`), so old results are not wrong on that account — but the SNP
+set is not the catalog's.
+
+Keep these files only to reproduce a pre-catalog analysis. For anything new, use
+`catalog2snptable.R`.
