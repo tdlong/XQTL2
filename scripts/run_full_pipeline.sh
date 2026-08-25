@@ -100,6 +100,7 @@ SLURM_COMMON="-A ${ACCOUNT}"
 # Needed by both the REFALT step and the SNP-table step below, so default it here
 # rather than inside the REFALT branch (which --skip-refalt skips).
 [[ -z "${CATALOG:-}" ]] && CATALOG="${PROCESSDIR}/Catalog"
+BAMLIST="helpfiles/${PROJECT}/bam_list.txt"
 
 echo "=== XQTL full pipeline: ${PROJECT} / ${SCAN} ==="
 echo ""
@@ -124,7 +125,6 @@ fi
 AFTER_REFALT=""
 if [[ "$SKIP_REFALT" == false ]]; then
     # Build bam_list if it doesn't exist yet
-    BAMLIST="helpfiles/${PROJECT}/bam_list.txt"
     if [[ ! -f "$BAMLIST" ]]; then
         [[ -z "$BAMDIR" ]]    && BAMDIR="data/bam/${PROJECT}"
         [[ -z "$FOUNDERS" ]]  && { echo "Error: --founders (A or B) required to build bam_list" >&2; exit 1; }
@@ -151,6 +151,22 @@ if [[ "$SKIP_REFALT" == false ]]; then
     echo "REFALT:     ${jid_refalt}  (catalog: ${CATALOG})"
     AFTER_REFALT="--dependency=afterok:${jid_refalt}"
 fi
+
+# ── Sample QC — advisory, runs as soon as RefAlt exists ─────────────────────
+# A thin or clumped sample does not fail loudly: est_hap2 fits each sample alone,
+# so it cannot corrupt its neighbours, but it can return haplotype frequencies
+# that are badly wrong and still pass every check the pipeline makes. This writes
+# the tables and prints what is flagged. It never gates the scan -- what counts as
+# too thin depends on the design -- so it is submitted alongside, not in the chain.
+QC_DEP=""
+[[ -n "${jid_refalt:-}" ]] && QC_DEP="--dependency=afterok:${jid_refalt}"
+QC_CMD="module load R/4.2.2 && Rscript pipeline/scripts/refalt_qc.R --dir ${PROCESSDIR} --parfile ${PARFILE}"
+if [[ -f "$BAMLIST" ]]; then
+    QC_CMD="${QC_CMD} && module load samtools/1.10 && bash pipeline/scripts/bam_qc.sh --bamlist ${BAMLIST} --out ${PROCESSDIR}/Calls/bam_qc.txt"
+fi
+jid_qc=$(sbatch --parsable ${QC_DEP} ${SLURM_COMMON} -p "${PARTITION}" \
+    --cpus-per-task 1 --mem-per-cpu 8G --time=2:00:00 --wrap="${QC_CMD}")
+echo "sample QC:  ${jid_qc}  (-> ${PROCESSDIR}/Calls/refalt_qc.txt)"
 
 # ── Step 4: REFALT2haps ─────────────────────────────────────────────────────
 if [[ "$SKIP_HAPS" == false ]]; then

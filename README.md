@@ -17,6 +17,7 @@ a companion package for interactive graphical analysis of scan results.
 1. Get raw reads
 2. Align reads (`fq2bam.sh`)
 3. Generate allele counts (`build_catalog.sh` once, then `call_samples.sh`)
+   - Per-sample QC (`refalt_qc.R`, `bam_qc.sh`) — automatic in `run_full_pipeline.sh`
 4. Call haplotypes (`REFALT2haps.sh`)
 5. Scan
    - 5a. Haplotype scan (`run_scan.sh` — smooth, Wald test, H², concat)
@@ -43,6 +44,7 @@ a companion package for interactive graphical analysis of scan results.
 
 - `*.scan.txt` — genome-wide haplotype scan (Wald -log10p, Falconer H², Cutler H²)
 - `*.snp_scan.txt` — SNP-level Wald test at every imputed SNP (optional)
+- `Calls/refalt_qc.txt`, `Calls/bam_qc.txt` — per-sample coverage and alignment QC
 - `*.meansBySample.txt` — smoothed founder frequencies per sample (QC)
 - Manhattan plots and heritability figures (PNG)
 - Tarballs of everything, ready to scp down
@@ -193,6 +195,7 @@ effective replicates, 4 samples). Larger experiments scale proportionally.
 | `smooth_haps.sh` | 5a | highmem | 1 | 10G | 4 hr | covariance uncount(64) needs ~8G on large chromosomes |
 | `smooth_r2_diag.sh` | 5a | standard | 1 | 4G | 30 min | R² calibration; runs between smooth and hap_scan |
 | `hap_scan.sh` | 5a | standard | 1 | 3G | 4 hr | 307 MB / 5:12 wall; reads R² from smooth_r2.txt |
+| `refalt_qc.R` + `bam_qc.sh` | 3 | standard | 1 | 8G | 2 hr | one pass over RefAlt + one flagstat per BAM |
 | `snp_scan.sh` | 5b | standard | 1 | 3G | 4 hr | 732 MB / 5:25 wall |
 | concat | 5a | standard | 1 | 3G | 1 hr | 436 MB / 19s wall |
 | snp_concat | 5b | standard | 1 | 3G | 1 hr | 413 MB / 21s wall |
@@ -376,6 +379,11 @@ Rscript pipeline/scripts/refalt_qc.R \
     --dir     process/<project> \
     --parfile helpfiles/<project>/hap_params.R
 ```
+
+**`run_full_pipeline.sh` runs this for you**, as soon as RefAlt exists — it is
+submitted alongside the haplotype step rather than in the chain, so it reports but
+never gates. Run it by hand as above when driving the steps individually, or to
+re-check an existing project.
 
 Writes `Calls/refalt_qc.txt`, one row per sample per chromosome, and prints
 anything flagged. Every metric is that sample's own — nothing is relative to
