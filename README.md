@@ -362,6 +362,58 @@ chain Step 4 on it with `--after ${JID_REFALT}`.
 counts are left alone, and `RefAlt.<chr>.txt` is re-merged to include everything.
 See **"Worked example — adding replicates to an existing experiment"**.
 
+### Check the samples before calling haplotypes
+
+A sample with poor coverage does not fail loudly. `est_hap2` fits each sample on
+its own, so a bad BAM cannot corrupt its neighbours — but a thin one returns
+haplotype frequencies that are badly wrong and still satisfy every constraint the
+pipeline checks. The Wald test partly protects itself (a large reconstruction
+covariance drives that replicate's effective N down), but heritability does not:
+Falconer and Cutler H² use the raw frequencies with no such weighting.
+
+```bash
+Rscript pipeline/scripts/refalt_qc.R \
+    --dir     process/<project> \
+    --parfile helpfiles/<project>/hap_params.R
+```
+
+Writes `Calls/refalt_qc.txt`, one row per sample per chromosome, and prints
+anything flagged. Every metric is that sample's own — nothing is relative to
+other samples.
+
+| column | reads on |
+|---|---|
+| `median_depth` | library success. Median, since collapsed repeats inflate the mean |
+| `pct_zero`, `pct_lt5` | sites with no reads, and with too few to be informative |
+| `sites_per_window` | covered catalog sites in a typical haplotype window |
+| `pct_window_covered` | that as a % of what the catalog offers — **the one flagged on**, since it separates a thin sample from a sparse catalog |
+| `disp_k` | overdispersion of depth relative to Poisson |
+| `flag` | `OK` / `LOW_COVERAGE` / `PATCHY` |
+
+`disp_k` catches the sample that has plenty of reads piled into too few places.
+It is a negative-binomial size fitted by moments over depths within [0.25×, 4×]
+of the median — the band matters, because a collapsed-repeat tail of 1% of sites
+at 20× depth drags an untrimmed estimate from a true 10 down to 0.35. These
+libraries are never Poisson; the number is for ranking samples against each
+other, not an absolute. It is deliberately depth-invariant, unlike `var/mean`,
+which grows with mean depth and so cannot compare samples sequenced to different
+depths.
+
+For alignment-side numbers — whether a thin sample had few reads or plenty that
+did not map:
+
+```bash
+bash pipeline/scripts/bam_qc.sh --bamlist helpfiles/<project>/bam_list.txt \
+    --out process/<project>/Calls/bam_qc.txt
+```
+
+Joins to `refalt_qc.txt` on `sample`. `has_unmapped` is reported because
+`pct_mapped` only means something if unmapped reads are still present — a BAM
+that arrived via `--skip-fq2bam` may have had them stripped, in which case the
+percentage is a meaningless 100. There is no duplicate metric: these libraries
+are not deduplicated by design, since at 50–200× reads sharing a start site occur
+legitimately, especially from Nextera.
+
 ---
 
 ## Step 4 — Call haplotypes (REFALT to haps)
