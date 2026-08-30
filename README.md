@@ -573,8 +573,25 @@ female pool with 0.75×, which inflates chrX statistics for males and deflates
 them for females. Autosomes are never affected.
 
 The flag is per scan, not per sample, because a scan contrasting a male pool
-against a female one would confound the treatment effect with sex. Run one
-scan per sex if you have both.
+against a female one would confound the treatment effect with sex. If your
+experiment has both, run one scan per sex and compare the two scans:
+
+```bash
+bash pipeline/scripts/run_scan.sh \
+    --design helpfiles/<project>/design.males.txt \
+    --dir    process/<project> \
+    --scan   <project>_males_smooth250 \
+    --sex    M
+
+bash pipeline/scripts/run_scan.sh \
+    --design helpfiles/<project>/design.females.txt \
+    --dir    process/<project> \
+    --scan   <project>_females_smooth250 \
+    --sex    F
+```
+
+Each design file lists only that sex's pools, and each scan gets its own
+output directory, so the two never mix.
 
 ### Option B — Step by step
 
