@@ -19,6 +19,7 @@ while [[ $# -gt 0 ]]; do
     --dir)      DIR="$2";       shift 2 ;;
     --outdir)   OUTDIR="$2";    shift 2 ;;
     --smooth-kb) SMOOTH_KB="$2"; shift 2 ;;
+    --sex)      SEX="$2";       shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -28,4 +29,5 @@ Rscript pipeline/scripts/smooth_haps.R \
     --dir       "${DIR}"      \
     --outdir    "${OUTDIR}"   \
     --rfile     "${RFILE}"    \
-    --smooth-kb "${SMOOTH_KB}"
+    --smooth-kb "${SMOOTH_KB}" \
+    --sex       "${SEX:-mixed}"

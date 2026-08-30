@@ -9,6 +9,7 @@
 #       --dir     process/<project> \
 #       --scan    <scan_name> \
 #       --smooth         250 \
+#       --sex            mixed \
 #       --mem-per-cpu    6G \
 #       --cpus-per-task  2 \
 #       -p               highmem \
@@ -18,6 +19,7 @@ set -e
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOOTH_KB=250
+SEX=mixed          # M | F | mixed -- sex of the pools in this scan; chrX only
 MEM_PER_CPU=3G
 CPUS_PER_TASK=1
 PARTITION=standard
@@ -30,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --dir)           DIR="$2";          shift 2 ;;
     --scan)          SCAN="$2";         shift 2 ;;
     --smooth)        SMOOTH_KB="$2";    shift 2 ;;
+    --sex)           SEX="$2";          shift 2 ;;
     --mem-per-cpu)   MEM_PER_CPU="$2";  shift 2 ;;
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
     -p|--partition)  PARTITION="$2";    shift 2 ;;
@@ -44,6 +47,11 @@ missing=""
 [[ -z "$DESIGN" ]] && missing="$missing --design"
 [[ -z "$DIR" ]]    && missing="$missing --dir"
 [[ -z "$SCAN" ]]   && missing="$missing --scan"
+case "$SEX" in
+  M|F|mixed) ;;
+  *) echo "Error: --sex must be M, F or mixed (got '$SEX')" >&2; exit 1 ;;
+esac
+
 if [[ -n "$missing" ]]; then
     echo "Error: missing required arguments:$missing" >&2
     echo "Usage: bash scripts/run_scan.sh --design <file> --dir <dir> --scan <name> [options]" >&2
@@ -65,6 +73,7 @@ jid_smooth=$(sbatch --parsable ${DEP_SMOOTH} \
     --dir       "${DIR}" \
     --outdir    "${SCAN}" \
     --smooth-kb "${SMOOTH_KB}" \
+    --sex       "${SEX}" \
     | cut -d_ -f1)
 echo "smooth:   $jid_smooth"
 

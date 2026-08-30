@@ -284,8 +284,8 @@ Heritability = function(p1, p2, rep_labels, ProportionSelect, af_cutoff,
 # smoothed rds, where smooth_haps.R has already applied the chrX dosage factor.
 # The 0.75 below is the old fixed assumption of a pool with equal numbers of
 # males and females; it is wrong for a single-sex pool.  Anything reviving this
-# function must take the factor from the design file's Xfactor column the way
-# smooth_haps.R does (XQTL2 #38).
+# function must take the factor from the scan's --sex the way smooth_haps.R
+# does (XQTL2 #38).
 doscan = function(df,chr,Nfounders){
 	sexlink = 1
 	if(chr=="chrX"){ sexlink=0.75 }

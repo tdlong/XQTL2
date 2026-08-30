@@ -22,7 +22,10 @@
 # Usage:
 #   Rscript scripts/smooth_haps.R \
 #       --chr chrX --dir process/proj --outdir SCAN_NAME \
-#       --rfile helpfiles/proj/design.txt --smooth-kb 125
+#       --rfile helpfiles/proj/design.txt --smooth-kb 125 --sex mixed
+#
+# --sex is the sex of the pools in THIS scan (M, F or mixed; default mixed).
+# It only affects chrX -- see the chrX dosage section below.
 ###############################################################################
 
 suppressPackageStartupMessages({
@@ -31,7 +34,7 @@ suppressPackageStartupMessages({
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 args   <- commandArgs(trailingOnly = TRUE)
-parsed <- list(smooth_kb = 125L)
+parsed <- list(smooth_kb = 125L, sex = "mixed")
 i <- 1L
 while (i <= length(args)) {
   switch(args[i],
@@ -40,6 +43,7 @@ while (i <= length(args)) {
     "--outdir"    = { parsed$outdir    <- args[i+1]; i <- i+2L },
     "--rfile"     = { parsed$rfile     <- args[i+1]; i <- i+2L },
     "--smooth-kb" = { parsed$smooth_kb <- as.integer(args[i+1]); i <- i+2L },
+    "--sex"       = { parsed$sex       <- args[i+1]; i <- i+2L },
     stop(paste("Unknown argument:", args[i]))
   )
 }
@@ -47,6 +51,30 @@ while (i <= length(args)) {
 mychr     <- parsed$chr
 smooth_kb <- parsed$smooth_kb
 design.df <- read.table(parsed$rfile, header = TRUE)
+
+# chrX dosage.  Num counts flies, and everything downstream works in
+# chromosomes: 2*Num of them.  That is right on an autosome, where every fly
+# carries two.  On chrX the pool carries fewer, and how many fewer depends on
+# the sex of the flies -- a female has 2 X, a male 1, so an equal mix averages
+# 1.5.  Scaling Num by half the X-per-fly count makes 2*Num come out right:
+#
+#   F      2 X per fly  ->  1.00  ->  2.0*Num chromosomes
+#   M      1 X per fly  ->  0.50  ->  1.0*Num
+#   mixed  1.5 per fly  ->  0.75  ->  1.5*Num
+#
+# A scan is one sex throughout: contrasting a male pool against a female one
+# would confound the treatment effect with sex, so --sex is per scan rather
+# than per sample.  Default is mixed, which is the fixed value this pipeline
+# applied unconditionally before, so omitting --sex reproduces old results
+# exactly -- but it is wrong for a single-sex experiment (XQTL2 #38).
+SEX_XFACTOR <- c(F = 1.0, M = 0.5, mixed = 0.75)
+sex <- parsed$sex
+if (!sex %in% names(SEX_XFACTOR))
+  stop("--sex must be one of M, F or mixed (got '", sex, "').\n",
+       "  M     = all-male pools     (1 X per fly)\n",
+       "  F     = all-female pools   (2 X per fly)\n",
+       "  mixed = equal numbers of males and females (the default)")
+xfactor <- if (mychr == "chrX") unname(SEX_XFACTOR[sex]) else 1.0
 
 # Stage layout: scans go under Scans/<scan> (see reorganize_project.sh).
 dirout        <- file.path(parsed$dir, "Scans", parsed$outdir)
@@ -150,34 +178,9 @@ smooth_half <- round(smooth_kb * 1000L / step_bp)
 cat(sprintf("  %d windows | step %d bp | smooth_half %d windows (+/-%d kb)\n",
             nrow(xx1), step_bp, smooth_half, smooth_kb))
 
-# chrX dosage.  Num is a count of flies, and everything downstream uses 2*Num
-# chromosomes -- right for an autosome, too many for the X.  The correct factor
-# is the mean number of X chromosomes per fly over 2, so it is set by the sex
-# composition of the pool: 1.0 all-female (2 X per fly), 0.5 all-male (1 X),
-# 0.75 an equal mix (1.5 X).
-#
-# The optional design column Xfactor states it per pool.  When it is absent we
-# keep the 0.75 this pipeline has always applied, so existing projects give
-# byte-identical results -- but 0.75 is only right for a mixed pool, and a
-# single-sex project must set the column (XQTL2 #38).
-if (mychr == "chrX") {
-  if (!"Xfactor" %in% names(design.df)) {
-    design.df$Xfactor <- 0.75
-    cat("  chrX: no Xfactor column in the design file, so assuming every pool\n",
-        "        holds equal numbers of males and females (Xfactor 0.75).\n",
-        "        Single-sex pools MUST set it: 1.0 all-female, 0.5 all-male.\n",
-        sep = "")
-  } else {
-    xf <- design.df$Xfactor
-    if (!is.numeric(xf) || any(is.na(xf)) || any(xf <= 0 | xf > 1))
-      stop("design column Xfactor must be numeric and in (0, 1] for every row: ",
-           "1.0 all-female, 0.5 all-male, 0.75 an equal mix.")
-    cat(sprintf("  chrX: Xfactor from design file (%s)\n",
-                paste(format(sort(unique(xf))), collapse = ", ")))
-  }
-} else {
-  design.df$Xfactor <- 1.0
-}
+if (mychr == "chrX")
+  cat(sprintf("  chrX: --sex %s, so Num is scaled by %g (%g X chromosomes per fly)\n",
+              sex, xfactor, 2*xfactor))
 
 options(dplyr.summarise.inform = FALSE)
 
@@ -194,7 +197,7 @@ freq_raw <- xx1 %>%
   rename(pool = sample, freq = Haps, founder = Names, group = Groups) %>%
   left_join(design.df, by = c("pool" = "bam")) %>%
   filter(!is.na(TRT)) %>%
-  mutate(Num = Xfactor * Num)
+  mutate(Num = xfactor * Num)
 
 # Mask unresolvable founders: if >1 founder shares a group at a window,
 # those founders' individual frequencies are arbitrary (only their sum is
@@ -299,7 +302,11 @@ cat("Writing smoothed RDS:", fileout_rds, "\n")
 saveRDS(
   list(freq          = freq_smoothed,
        err           = err_smoothed,
-       founder_names = founder_names),
+       founder_names = founder_names,
+       # What --sex this scan assumed, so the smoothed file records it rather
+       # than it living only in whatever command line happened to produce it.
+       sex           = sex,
+       xfactor       = xfactor),
   fileout_rds
 )
 
