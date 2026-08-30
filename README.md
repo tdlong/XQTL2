@@ -805,42 +805,104 @@ Plots `H2` and `H2_vc` from the scan.
 
 #### How H² is estimated
 
-`hap_scan.R` reports `H2` as a percentage, and `H2_vc` — the same estimator with
-a per-window variance component applied, which is non-negative by construction.
-Both come from `heritability_rep()` in `scan_functions.R`.
+`hap_scan.R` reports `H2`, the percentage of phenotypic variance attributable to
+the window, and `H2_vc`, the same estimator with a per-window variance component
+applied so it is non-negative by construction. Both come from
+`heritability_rep()` in `scan_functions.R`.
 
-For founder haplotypes at frequencies `p_f` with additive effects `a_f`,
-truncation selection at intensity `i` gives `Δp_f = p_f·i·(a_f−ā)`, so with `k`
-allele copies per fly
+**Model.** At a window, let the founder haplotypes be indexed `f = 1…m` with
+frequencies `p_f` in the unselected population, and let `a_f` be the additive
+effect of haplotype `f` on the trait, expressed in phenotypic standard
+deviations. An individual's genotypic value at the locus is the sum over the
+allele copies it carries. Write `ā = Σ_f p_f a_f` for the mean effect.
+
+**Response to selection.** Under truncation selection retaining the top
+proportion `P`, with standardised selection intensity `i = φ(Φ⁻¹(1−P))/P`, the
+change in the frequency of haplotype `f` is, to first order in the effects,
 
 ```
-V_A = k · Σ p_f (a_f − ā)²  =  (k/i²) · Σ Δp_f²/p_f
+Δp_f = p_f (a_f − ā) i
 ```
 
-and `H² = 100k/i² · Σ Δp²/p` as a percentage. Two consequences. The `1/p`
-weighting is correct as it stands — the `p(1−p)` of the textbook biallelic form
-is what `p_f(a_f−ā)²` collapses to for two alleles and does not generalise. And
-the leading constant is `100k`, so `k` must follow the locus:
+so that `a_f − ā = Δp_f / (p_f i)`.
 
-| locus | `k` | constant |
+**Additive variance.** With `k` allele copies per individual at the locus, the
+additive genetic variance contributed by the window is `V_A = k Σ_f p_f (a_f − ā)²`.
+Substituting the expression above,
+
+```
+V_A = (k / i²) · Σ_f Δp_f² / p_f
+```
+
+and since the trait is standardised, `H² = V_A`. Two features of this expression
+are worth stating explicitly, because both differ from the biallelic form usually
+quoted. The weighting is `1/p_f`, not `1/(p_f(1−p_f))`: the `p(1−p)` of the
+textbook expression is what `p_f(a_f − ā)²` collapses to when there are exactly
+two alleles, and it does not generalise to a multi-allelic locus. And the leading
+constant carries `k`, so it is not a fixed 2:
+
+| locus | `k` | leading constant (as a percentage) |
 |---|---|---|
-| autosome, female X | 2 | 200 |
-| male X (hemizygous) | 1 | 100 |
-| mixed-sex X | 1.5 | 150 |
+| autosome, or X in females | 2 | 200 |
+| X in males (hemizygous) | 1 | 100 |
+| X in a mixed-sex pool | 1.5 | 150 |
 
-`k/2` is `xfactor`, recorded in the smoothed RDS from the scan's `--sex`, so
-nothing extra has to be supplied.
+`k/2` is the `xfactor` recorded in the smoothed RDS from the scan's `--sex`, so
+it follows the chromosome and the pool composition automatically.
 
-**Replicates are averaged before squaring.** They are independent measurements of
-one shift, and `mean(d²) = mean(d)² + var(d)`, so squaring per replicate and
-averaging after leaves the replicate scatter inside the estimate. `var(d)` scales
-as 1/N, so that spurious term roughly doubles on the male X. Averaging first also
-makes the correction *measurable* — `var(d)/n`, taken from the replicates rather
-than modelled from `mn.covmat` plus the lsei covariance. H² therefore uses no
-covariance at all, and needs no `smooth_r2.txt`.
+**Estimation.** The experiment provides `n` replicate control/selected pool
+pairs. Replicates may differ in the proportion selected, so what they measure in
+common is the response per unit selection intensity. For replicate `r`, with
+selected proportion `P_r` and intensity `i_r`, define
 
-Replicates differ in `Proportion`, so what they measure in common is the response
-per unit selection intensity, `d/i`, not `d`.
+```
+e_fr = (ẑ_fr − ĉ_fr) / i_r
+```
+
+where `ĉ_fr` and `ẑ_fr` are the smoothed founder frequencies in the control and
+selected pools. From the model, `E[e_fr] = p_f (a_f − ā)` for every `r`, so the
+replicates are independent measurements of one quantity. Let `ē_f` and `s²_f` be
+their sample mean and variance across replicates.
+
+Because `E[ē_f²] = (p_f(a_f − ā))² + Var(ē_f)`, the squared mean is biased upward
+by the sampling variance of the mean, estimated by `s²_f / n`. Subtracting it
+gives
+
+```
+Ĥ² = 100 k · Σ_f ( ē_f² − s²_f / n ) / p̂_f
+```
+
+with `p̂_f` the mean control frequency across replicates, reported as a
+percentage. The correction is **measured from the replicates**, not modelled from
+the sampling and haplotype-reconstruction covariances; consequently `H²` uses no
+covariance matrix and needs no smoothing R² calibration.
+
+Averaging the replicates before squaring is essential rather than cosmetic. Since
+`mean(d²) = mean(d)² + var(d)`, squaring each replicate's shift and averaging
+afterwards leaves the between-replicate scatter inside the estimate. That scatter
+scales as 1/N, so the resulting inflation is largest where the pools carry fewest
+chromosomes — most acutely the X in males.
+
+**Non-negativity.** `Ĥ²` is unbiased and therefore scatters below zero wherever
+the true value is near zero, which is correct for an unbiased estimator of a
+non-negative quantity but inconvenient to plot. `H2_vc` instead treats `H²` as
+the variance component it is: on the scale `u_f = ē_f / √p̂_f` the statistic is
+`Σ_f u_f²`, each `û_f` carries known noise `s_f = (s²_f/n)/p̂_f`, and a single
+`τ²` is fitted per window by maximum likelihood under `û_f ~ N(0, τ² + s_f)`.
+`H2_vc` is then the posterior `E[Σ u_f² | û]`. Non-negativity follows because
+`τ̂² = 0` is a boundary solution of the likelihood at a null window rather than a
+clamp imposed afterwards, and founders are weighted by `1/(τ² + s_f)`, so poorly
+determined founders contribute less. `τ²` is fitted per window rather than
+genome-wide: a single global prior is dominated by the large majority of null
+windows and shrinks real signals several-fold.
+
+**Limitations.** The `1/p_f` weighting is unstable for founders at low frequency,
+where the estimated `p̂_f` can have a standard error comparable to itself; the
+denominator is floored at `AF_CUTOFF = 0.01`, which bounds but does not remove
+the problem. The derivation assumes additive effects and no epistasis at the
+window, first-order response to selection, and independent replicates. `H²` is
+the variance attributable to a window, not to a single causal variant, and
+neighbouring windows are correlated by the smoothing.
 
 > **Changed in XQTL2 #40.** `Falc_H2`, `Cutl_H2` and their `*_bias` columns are
 > gone. They squared within each replicate and corrected with a modelled variance;
