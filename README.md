@@ -608,6 +608,29 @@ sbatch --array=1-5 pipeline/scripts/smooth_haps.sh \
     --sex       mixed
 ```
 
+Smoothing repairs unresolvable founders. Where more than one founder shares an
+hclust group at a window, `lsei` identifies only their *sum*, not the individual
+founders. Those frequencies are masked, gap-filled from flanking windows where
+the founders **are** resolved, and rescaled to preserve the `lsei` group sum.
+
+The **covariance gets the same three steps** (mask, `fill_gaps`, smooth). It did
+not before XQTL2 #40, and the mismatch was severe: `lsei` returns a perfectly
+anti-correlated block for a confounded pair, with marginal variances that cancel.
+On real chrX data one such pair had `Var = 0.5514` and `0.5516` with
+`Cov = −0.5515`, correlation exactly −1 — so their variances summed to 1.1030
+while `Var(sum)` was 0.000023, a factor of 48,000. A variance of 0.55 is not even
+possible for a quantity bounded in [0,1], where the ceiling is 0.25: the
+linearised `lsei` covariance ignores the constraints the estimator is subject to.
+
+What every downstream step actually uses is the **imputed** frequency, so the
+uncertainty beside it must be the imputation's, which the flanking windows carry
+— not the unbounded uncertainty of a raw estimate that was discarded. This
+reaches the Wald test and the SNP scan, which both consume the covariance. On
+real chrX data the corrected `Wald_log10p` differs by up to 1.23 per window (18
+of 4212 by more than 0.5), almost always upwards, since the inflated variance had
+been making those windows over-conservative. **Scans smoothed before this fix
+should be re-run.**
+
 **2. R² smoothing diagnostic** — computes the R² between smoothed and raw
 haplotype frequencies across all founders and pools, writes
 `<scan_name>.smooth_r2.txt` to the scan directory. The haplotype scan
