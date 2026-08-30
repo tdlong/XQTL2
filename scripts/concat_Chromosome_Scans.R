@@ -22,7 +22,8 @@ df1 = files %>%
   group_by(chr) %>%
   arrange(chr, pos) %>%
   mutate(
-    across(any_of(c("Wald_log10p", "Pseu_log10p", "Falc_H2", "Cutl_H2", "avg.var")),
+    across(any_of(c("Wald_log10p", "Pseu_log10p", "H2", "H2_vc",
+                    "Falc_H2", "Cutl_H2", "avg.var")),
            ~ slide_dbl(.x, mean, .before = 5, .after = 5))
   ) %>%
   ungroup()

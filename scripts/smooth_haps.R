@@ -77,7 +77,7 @@ if (!sex %in% names(SEX_XFACTOR))
 xfactor <- if (mychr == "chrX") unname(SEX_XFACTOR[sex]) else 1.0
 
 # running_mean() and fill_gaps() live in scan_functions.R so this script and
-# h2_from_scan.R repair a series the same way (XQTL2 #40).
+# the covariance repair reuse them (XQTL2 #40).
 script_dir <- dirname(normalizePath(sub("--file=", "",
                 grep("--file=", commandArgs(FALSE), value = TRUE))))
 source(file.path(script_dir, "scan_functions.R"))

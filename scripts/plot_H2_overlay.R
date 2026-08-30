@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 ###############################################################################
-# plot_H2_overlay.R — 5-panel Falconer + Cutler H² overlay from haplotype scan
+# plot_H2_overlay.R — 5-panel H² overlay from the haplotype scan
 #
 # Usage:
 #   Rscript scripts/plot_H2_overlay.R \
@@ -13,8 +13,8 @@
 #   --genes genes.txt     tab-delimited: name, chr, pos_mb
 #   --peaks peaks.txt     tab-delimited: label, chr, pos_mb
 #   --height 7.0          override height in inches (default: 1.4 per chr)
-#   --falc-colour "#E31A1C"   Falconer H² colour
-#   --cutl-colour "#33A02C"   Cutler H² colour
+#   --falc-colour "#E31A1C"   H² colour
+#   --cutl-colour "#33A02C"   H² variance-component colour
 ###############################################################################
 
 library(tidyverse)
@@ -86,20 +86,22 @@ scan_df <- read.table(scan_file, header = TRUE) %>%
   mutate(pos_mb = pos / 1e6,
          chr    = factor(chr, levels = chr_order)) %>%
   filter(chr %in% chr_order) %>%
-  pivot_longer(cols = c(Falc_H2, Cutl_H2),
+  # H2 is the replicate-based estimate, H2_vc the same floored at zero by a
+  # per-window variance component.  These replaced Falc_H2/Cutl_H2 in XQTL2 #40.
+  pivot_longer(cols = c(H2, H2_vc),
                names_to  = "estimator",
-               values_to = "H2") %>%
-  filter(!is.na(H2)) %>%
+               values_to = "H2val") %>%
+  filter(!is.na(H2val)) %>%
   mutate(estimator = factor(estimator,
-                            levels = c("Falc_H2", "Cutl_H2"),
-                            labels = c("Falconer H\u00b2", "Cutler H\u00b2")))
+                            levels = c("H2", "H2_vc"),
+                            labels = c("H\u00b2", "H\u00b2 (variance component)")))
 
 if (nrow(scan_df) == 0) stop("No H2 data loaded — check --scan path.")
 
 if (is.null(out_height))
   out_height <- length(unique(as.character(scan_df$chr))) * 1.4
 
-colour_map <- c("Falconer H\u00b2" = falc_colour, "Cutler H\u00b2" = cutl_colour)
+colour_map <- c("H\u00b2" = falc_colour, "H\u00b2 (variance component)" = cutl_colour)
 
 chr_label_df <- scan_df %>%
   distinct(chr) %>%
@@ -118,7 +120,7 @@ het_rects <- HET_BOUNDS %>%
   )}
 
 # ── Plot ─────────────────────────────────────────────────────────────────────
-p <- ggplot(scan_df, aes(x = pos_mb, y = H2, colour = estimator)) +
+p <- ggplot(scan_df, aes(x = pos_mb, y = H2val, colour = estimator)) +
   geom_rect(data = het_rects,
             aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
             fill = "grey85", alpha = 0.5, colour = NA, inherit.aes = FALSE) +
@@ -180,13 +182,13 @@ if (!is.null(peaks_file) && file.exists(peaks_file)) {
       rowwise() %>%
       mutate(y_val = {
         s <- wide_df %>% filter(chr == .data$chr)
-        if (nrow(s) == 0) 0 else max(s$Falc_H2[which.min(abs(s$pos_mb - pos_mb))],
-                                       s$Cutl_H2[which.min(abs(s$pos_mb - pos_mb))],
+        if (nrow(s) == 0) 0 else max(s$H2[which.min(abs(s$pos_mb - pos_mb))],
+                                       s$H2_vc[which.min(abs(s$pos_mb - pos_mb))],
                                        na.rm = TRUE)
       }) %>%
       ungroup()
 
-    y_range <- max(scan_df$H2, na.rm = TRUE)
+    y_range <- max(scan_df$H2val, na.rm = TRUE)
     peaks_df <- peaks_df %>%
       mutate(y_label = y_val + y_range * 0.08)
 

@@ -157,6 +157,93 @@ wald.test3 = function(p1,p2,covar1,covar2,nrepl=1,N1=NA,N2=NA){
   list(wald.test=tstat, p.value=pval, avg.var=average_variance(covar)$avg_var)
 }
 
+# ── Heritability from replicate haplotype frequency shifts ───────────────────
+# The estimator the pipeline reports (XQTL2 #40).  Two things distinguish it
+# from the older Heritability() below, which it supersedes.
+#
+# 1. Replicates are averaged BEFORE squaring.  They are independent measurements
+#    of one shift, and mean(d^2) = mean(d)^2 + var(d), so squaring per replicate
+#    and averaging after leaves the replicate scatter inside the estimate.  At
+#    chrX:10,230,000 in AGE_SY20_M_no89 the old form reported 1.790 where the
+#    squared mean shift is 0.505; a founder with no signal at all (t = -0.33)
+#    but the largest variance at the window contributed +0.378 of it.  var(d)
+#    scales as 1/N, so the spurious term roughly doubles on the male X.
+#
+#    Averaging first also lets the correction be MEASURED from the replicates,
+#    var(d)/n, rather than modelled from mn.covmat plus the lsei covariance.
+#    That matters: at that window the observed replicate scatter is 1.5-3.4x the
+#    modelled variance for the three founders carrying the h2, and 0.14x for a
+#    founder at C = 0.003.  A chi-square built from the measured variance gives
+#    -log10p = 5.41 there against a Wald of about 5, so the test and the effect
+#    size finally come from one variance rather than two.
+#
+# 2. The leading constant is 100*k, not 200.  For founder haplotypes at
+#    frequencies p_f with additive effects a_f, truncation selection at
+#    intensity i gives Dp_f = p_f * i * (a_f - abar), hence
+#
+#      V_A = k * sum_f p_f (a_f - abar)^2 = (k / i^2) * sum_f Dp_f^2 / p_f
+#
+#    with k allele copies per fly.  A hardcoded 200 asserts k = 2, which is
+#    right for an autosome or a female X and wrong for a hemizygous male X
+#    (k = 1) or a mixed-sex X (k = 1.5).  ploidy is k/2, i.e. xfactor, which
+#    smooth_haps.R records.  Note the derivation also gives 1/p, not
+#    1/(p(1-p)) -- the pq of the biallelic textbook form is what
+#    p_f (a_f - abar)^2 collapses to for two alleles and does not generalise.
+#
+# Replicates differ in Proportion, so what they measure in common is the
+# response per unit selection intensity, d/i, not d.
+#
+# p1, p2: nrepl x nF control and selected founder frequencies, rows in
+# rep_labels order.  Returns H2 and H2_vc as percentages.
+heritability_rep <- function(p1, p2, rep_labels, ProportionSelect, af_cutoff,
+                             ploidy = 1.0) {
+  props <- ProportionSelect$Proportion[match(rep_labels, ProportionSelect$REP)]
+  ok    <- !is.na(props)
+  if (sum(ok) < 2L) return(list(H2 = NA_real_, H2_vc = NA_real_))
+  p1 <- p1[ok, , drop = FALSE]; p2 <- p2[ok, , drop = FALSE]
+  props <- props[ok]; n <- nrow(p1)
+
+  i_r <- dnorm(qnorm(1 - props)) / props        # selection intensity per replicate
+  e   <- (p2 - p1) / i_r                        # response per unit intensity
+  Cb  <- colMeans(p1)
+  den <- pmax(Cb, af_cutoff)
+  u   <- colMeans(e) / sqrt(den)
+  s   <- (apply(e, 2, var) / n) / den
+
+  U <- matrix(u, nrow = 1L); S <- matrix(s, nrow = 1L)
+  list(H2    = 200 * ploidy * sum(u^2 - s),
+       H2_vc = 200 * ploidy * vc_sum(U, S, fit_tau2(U, S)))
+}
+
+# ── Per-window variance component ────────────────────────────────────────────
+# h2 is a variance, so estimate it as one.  On u = d/sqrt(p) the statistic is
+# sum(u^2) and each u_hat carries known noise s, so model u ~ N(0, tau2) and fit
+# tau2 by ML from the founders AT THAT WINDOW:  u_hat_f ~ N(0, tau2 + s_f).
+#
+# Fitting per window, not genome-wide, is the point.  With one global prior the
+# ~95% of windows that are null drag tau2 to nothing and real QTL shrink about
+# fivefold (0.109 against a true 0.507 in simulation, vs 0.512 for the local
+# fit).  Non-negativity is then a boundary solution -- tau2 = 0 is where the
+# likelihood peaks at a null window -- rather than a clamp, and founders are
+# weighted by 1/(tau2+s), so a badly determined founder counts for less.
+#
+# Fisher-scoring fixed point, vectorised over rows.  At convergence
+# sum(w^2 u^2) = sum(w) with w = 1/(tau2+s), the ML score equation.
+fit_tau2 <- function(U, S, iter = 50L) {
+  t2 <- pmax(rowMeans(U^2 - S), 0)
+  for (k in seq_len(iter)) {
+    w  <- 1 / (t2 + S)
+    t2 <- pmax(rowSums(w^2 * (U^2 - S)) / rowSums(w^2), 0)
+  }
+  t2
+}
+
+# Posterior E[sum u^2 | u_hat] under the fitted tau2.
+vc_sum <- function(U, S, t2) {
+  k <- t2 / (t2 + S)
+  rowSums(k^2 * U^2 + k * S)
+}
+
 mn.covmat= function(p,n,min.p=0){
   # generate multinomial covariance matrix
   # p is vector of multinomial relative frequencies

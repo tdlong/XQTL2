@@ -64,6 +64,14 @@ err_smoothed  <- sm$err        # (CHROM, pos, TRT, REP, fi, fj, v)
 founder_names <- sm$founder_names
 nF            <- length(founder_names)
 
+# Allele copies per fly at this locus, over 2 -- 1.0 on an autosome or a female
+# X, 0.5 on a hemizygous male X, 0.75 on a mixed-sex X.  smooth_haps.R records
+# it; it sets the leading constant of the h2 formula (XQTL2 #40).
+PLOIDY <- if (!is.null(sm$xfactor)) sm$xfactor else 1.0
+if (mychr == "chrX")
+  cat(sprintf("chrX ploidy factor: %.2f (sex = %s)\n",
+              PLOIDY, if (!is.null(sm$sex)) sm$sex else "unrecorded"))
+
 ProportionSelect <- design.df %>%
   filter(TRT == "Z") %>% select(REP, Proportion) %>% arrange(REP)
 
@@ -183,25 +191,21 @@ scan_list <- lapply(seq_len(W), function(w) {
   trafo <- diag(1/sqrt(eval)) %*% t(eg$vectors[,1:df])
   tstat <- sum((trafo %*% (p1p - p2p))^2)
 
-  # Heritability. covar1/covar2/N1/N2 are passed so the squaring bias can be
-  # propagated from the same covariance the Wald test just used (XQTL2 #34).
+  # Heritability.  Replicates are averaged before squaring and the correction is
+  # measured from them, so no covariance is passed: the modelled variance was
+  # wrong per founder in both directions and is not used (XQTL2 #40).
   h2 <- tryCatch(
-    Heritability(p1, p2, rep_labels, ProportionSelect, AF_CUTOFF,
-                 covar1, covar2, N1, N2),
-    error = function(e) list(Falconer_H2 = NA_real_, Cutler_H2 = NA_real_,
-                             Falconer_H2_bias = NA_real_,
-                             Cutler_H2_bias = NA_real_,
-                             Cutler_clamp_frac = NA_real_)
-  )
-
-  list(chr             = mychr,
-       pos             = win_pos[w],
-       Wald_log10p     = -log10(pchisq(tstat / R2_SMOOTH, df, lower.tail = FALSE)),
-       Falc_H2         = h2$Falconer_H2,
-       Cutl_H2         = h2$Cutler_H2,
-       Falc_H2_bias    = h2$Falconer_H2_bias,
-       Cutl_H2_bias    = h2$Cutler_H2_bias,
-       Cutl_clamp_frac = h2$Cutler_clamp_frac)
+    heritability_rep(p1, p2, rep_labels, ProportionSelect, AF_CUTOFF, PLOIDY),
+    error = function(e) list(H2 = NA_real_, H2_vc = NA_real_))
+  # Falc_H2/Cutl_H2 and their bias columns are gone: they squared per replicate
+  # and corrected with a modelled variance, both of which #40 showed to be
+  # wrong.  H2 replaces them; H2_vc is the same estimator floored at zero by a
+  # per-window variance component.
+  list(chr         = mychr,
+       pos         = win_pos[w],
+       Wald_log10p = -log10(pchisq(tstat / R2_SMOOTH, df, lower.tail = FALSE)),
+       H2          = h2$H2,
+       H2_vc       = h2$H2_vc)
 })
 
 scan_results <- bind_rows(Filter(Negate(is.null), scan_list))

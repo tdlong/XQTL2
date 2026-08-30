@@ -42,7 +42,7 @@ a companion package for interactive graphical analysis of scan results.
 
 **What you get at the end:**
 
-- `*.scan.txt` — genome-wide haplotype scan (Wald -log10p, Falconer H², Cutler H²)
+- `*.scan.txt` — genome-wide haplotype scan (Wald -log10p, H²)
 - `*.snp_scan.txt` — SNP-level Wald test at every imputed SNP (optional)
 - `Calls/refalt_qc.txt`, `Calls/bam_qc.txt` — per-sample coverage and alignment QC
 - `*.meansBySample.txt` — smoothed founder frequencies per sample (QC)
@@ -371,8 +371,8 @@ A sample with poor coverage does not fail loudly. `est_hap2` fits each sample on
 its own, so a bad BAM cannot corrupt its neighbours — but a thin one returns
 haplotype frequencies that are badly wrong and still satisfy every constraint the
 pipeline checks. The Wald test partly protects itself (a large reconstruction
-covariance drives that replicate's effective N down), but heritability does not:
-Falconer and Cutler H² use the raw frequencies with no such weighting.
+covariance drives that replicate's effective N down); H² does not use the
+reconstruction covariance at all, taking its variance from the replicates.
 
 ```bash
 Rscript pipeline/scripts/refalt_qc.R \
@@ -769,7 +769,7 @@ Rscript pipeline/scripts/plot_manhattan.R \
     --threshold 10
 ```
 
-### Heritability overlay (Falconer + Cutler)
+### Heritability overlay
 
 ```bash
 Rscript pipeline/scripts/plot_H2_overlay.R \
@@ -778,77 +778,26 @@ Rscript pipeline/scripts/plot_H2_overlay.R \
     --format powerpoint
 ```
 
-The `Falc_H2` and `Cutl_H2` in `<scan>.scan.txt` are **raw** — they square a
-noisy frequency estimate, and `E[x^2] = x_true^2 + Var(x)`, so both carry an
-upward offset that is present whether or not there is real signal. The offset
-scales with the variance of the frequency estimates, so it is larger wherever
-those are less well determined — notably chrX in male pools, which carry half
-the chromosomes per fly. **Raw h2 is therefore not comparable between chrX and
-an autosome, or between sexes on chrX** (XQTL2 #40).
+Plots `H2` and `H2_vc` from the scan.
 
-### Bias-corrected heritability
+#### How H² is estimated
 
-`h2_from_scan.R` recomputes Falconer h2 from a finished scan with the squaring
-bias subtracted, which is the comparable quantity:
+`hap_scan.R` reports `H2` as a percentage, and `H2_vc` — the same estimator with
+a per-window variance component applied, which is non-negative by construction.
+Both come from `heritability_rep()` in `scan_functions.R`.
 
-```bash
-Rscript pipeline/scripts/h2_from_scan.R \
-    --dir   process/<project> \
-    --scan  <scan_name> \
-    --rfile helpfiles/<project>/design.txt
-```
-
-Writes `<scan_name>.h2_falconer.txt`, one row per window:
-
-| column | meaning |
-|--------|---------|
-| `h2_raw` | the uncorrected estimator (reproduces `Falc_H2`) |
-| `h2_bias` | the squaring bias |
-| `h2_corr` | `h2_raw − h2_bias`; unbiased, scatters negative at null windows |
-| `h2_corr_pos` | its positive part |
-| **`h2_rep`** | **replicate-based estimate — the recommended column** |
-| **`h2_rep_vc`** | same, floored at zero by a per-window variance component |
-| `h2_rep_raw` | the squared mean shift, before the `var/n` correction |
-| `h2_vc` | variance component on the *modelled* variance (superseded) |
-| `h2_mult`, `h2_rec` | the bias split into its multinomial and reconstruction halves |
-| `n_floor`, `n_repair` | founders at the AF floor; founders whose covariance was repaired |
-| `sex`, `xfactor` | what the smoothed data was built with |
-
-Add `--chr` for a single chromosome, `--out` for a different destination.
-
-**Use `h2_rep`.** The replicates are independent measurements of one shift, so
-they are averaged *before* squaring. `Falc_H2` squares within each replicate and
-averages after, and since `mean(d²) = mean(d)² + var(d)` that leaves the replicate
-scatter inside the estimate. At chrX:10230000 in `AGE_SY20_M_no89` — the h2 peak
-for that scan — the pipeline reports 1.790 where the squared mean shift is 0.505.
-Founder B3 there has no signal (its ten shifts fall either side of zero) but the
-largest variance of any founder, and contributes +0.378 of pure noise.
-
-`var(d)` scales as 1/N, so this term roughly doubles on the male X where a fly
-carries half the chromosomes. **That is the male-X h2 excess** — arithmetic, not
-a covariance problem.
-
-Averaging first also makes the correction *measurable*: `var(d)/n`, smaller by a
-factor of n, needing no `mn.covmat`, no lsei covariance and no smoothing R². That
-matters because the model is wrong per founder in both directions — at that window
-the observed replicate scatter is 1.5–3.4× the modelled variance for the three
-founders carrying the h2, and 0.14× for a founder at C = 0.003.
-
-`h2_rep_vc` applies the same per-window variance component to the measured
-variance, giving a non-negative track.
-
-**Ploidy.** For a locus with founder haplotypes at frequencies `p_f` and additive
-effects `a_f`, truncation selection at intensity `i` gives `Δp_f = p_f·i·(a_f−ā)`,
-so with `k` allele copies per fly
+For founder haplotypes at frequencies `p_f` with additive effects `a_f`,
+truncation selection at intensity `i` gives `Δp_f = p_f·i·(a_f−ā)`, so with `k`
+allele copies per fly
 
 ```
 V_A = k · Σ p_f (a_f − ā)²  =  (k/i²) · Σ Δp_f²/p_f
 ```
 
-and `h² = 100k/i² · Σ Δp²/p` as a percentage. The `1/p` weighting is therefore
-correct as it stands — the `p(1−p)` of the textbook biallelic form is what
-`p_f(a_f−ā)²` collapses to for two alleles and does not generalise. But the
-leading constant is `100k`, so a hardcoded 200 assumes `k = 2`:
+and `H² = 100k/i² · Σ Δp²/p` as a percentage. Two consequences. The `1/p`
+weighting is correct as it stands — the `p(1−p)` of the textbook biallelic form
+is what `p_f(a_f−ā)²` collapses to for two alleles and does not generalise. And
+the leading constant is `100k`, so `k` must follow the locus:
 
 | locus | `k` | constant |
 |---|---|---|
@@ -856,54 +805,27 @@ leading constant is `100k`, so a hardcoded 200 assumes `k = 2`:
 | male X (hemizygous) | 1 | 100 |
 | mixed-sex X | 1.5 | 150 |
 
-`k/2` is `xfactor`. #38 applied it to `Num`, i.e. to the sampling variance; it
-belongs on the genetic variance too and was never applied there. Without it a
-hemizygous locus is credited with the additive variance of a diploid one and
-male-X h2 comes out 2× too large for the same frequency shift.
+`k/2` is `xfactor`, recorded in the smoothed RDS from the scan's `--sex`, so
+nothing extra has to be supplied.
 
-`h2_vc` (below) is the older form built on the modelled variance and is kept for
-comparison only. h2 is a variance, so it is estimated as one: on the scale
-`u = (Z−C)/√C` the statistic is `200/i² · Σu²`, each `û_f` carries known noise
-`s_f`, and `τ²` is fitted per window by ML from the founders at that window. Two
-things follow. Non-negativity is a boundary solution — `τ̂² = 0` is where the
-likelihood peaks at a null window — rather than a clamp, so `h2_vc` is never
-negative without anything being truncated. And founders are weighted by
-`1/(τ²+s_f)`, so a badly determined founder contributes less, where plain
-subtraction weights all founders equally. `τ²` is fitted per window, not
-genome-wide: a single global prior would be dragged to nothing by the ~95% of
-windows that are null and would shrink real QTL several-fold.
+**Replicates are averaged before squaring.** They are independent measurements of
+one shift, and `mean(d²) = mean(d)² + var(d)`, so squaring per replicate and
+averaging after leaves the replicate scatter inside the estimate. `var(d)` scales
+as 1/N, so that spurious term roughly doubles on the male X. Averaging first also
+makes the correction *measurable* — `var(d)/n`, taken from the replicates rather
+than modelled from `mn.covmat` plus the lsei covariance. H² therefore uses no
+covariance at all, and needs no `smooth_r2.txt`.
 
-The covariance repair is applied in `smooth_haps.R`, so it reaches every consumer
-— the Wald test and the SNP scan as well as heritability. The heritability bias
-was hit hardest because it sums the bare diagonal, where nothing cancels, but the
-Wald moves too: on real chrX data the corrected `-log10p` differs by up to 1.23
-log units per window (18 of 4212 windows by more than 0.5), almost always
-upwards, because the inflated variance had been making those windows
-over-conservative. **Scans smoothed before this fix should be re-run.**
+Replicates differ in `Proportion`, so what they measure in common is the response
+per unit selection intensity, `d/i`, not `d`.
 
-#### Run `smooth_r2_diag` first
-
-`mn.covmat() + covar` is the variance of a **single window's** estimate, but the
-frequencies being squared are smoothed over ±`smooth_kb`, so their variance is
-smaller by the smoothing R². `hap_scan.R` already applies this on the Wald side
-(`pchisq(tstat / R2_SMOOTH)`), and `h2_from_scan.R` reads the same
-`<scan_name>.smooth_r2.txt`. **If that file is absent no correction is applied,
-the bias over-subtracts by 1/R², and `h2_corr` is pushed negative** — the script
-warns when this happens. Run the Step 5a R² diagnostic before relying on the
-magnitudes.
-
-It reads the smoothed `.rds`, **not** the `meansBySample` file, because the bias
-needs the variance of each frequency estimate — multinomial sampling *plus* the
-lsei reconstruction error — and the reconstruction covariance exists only in the
-`.rds`. The multinomial term alone understates the bias. The design file is read
-for one thing, `Proportion`, which sets the Falconer selection intensity; the
-chromosome and the pool sex do not have to be supplied, since `CHROM` is in the
-data, `Num` was already chrX-scaled at Step 5a, and the `.rds` records its
-`--sex`.
-
-`h2_corr` is unbiased, so it scatters negative where the true h2 is zero. That is
-correct for an unbiased estimator of a non-negative quantity, not a defect; use
-`h2_corr_pos` if a non-negative track is wanted.
+> **Changed in XQTL2 #40.** `Falc_H2`, `Cutl_H2` and their `*_bias` columns are
+> gone. They squared within each replicate and corrected with a modelled variance;
+> both were wrong. At the h² peak of a male-X scan the old columns read 0.92%
+> against 0.17% now — 2.7× from the replicate averaging and 2× from the ploidy
+> constant. Scans produced before this must be re-run through `hap_scan.R` (a few
+> seconds per chromosome); the smoothed RDS files do not need regenerating for
+> this change.
 
 ### SNP scan
 
@@ -1183,13 +1105,13 @@ tar xzf <scan_name>.tar.gz
 | `<scan>.snp_scan.txt` | SNP scan (Wald -log10p; one row per SNP) |
 | `<scan>.snp_meansBySample.txt` | Imputed SNP ALT frequencies |
 | `<scan>.wald.png` | 5-panel haplotype Wald Manhattan |
-| `<scan>.H2.png` | 5-panel Falconer + Cutler heritability overlay |
+| `<scan>.H2.png` | 5-panel heritability overlay |
 | `<scan>.snp.wald.png` | 5-panel SNP Wald Manhattan |
 
 **Output column reference:**
 
 `<scan>.scan.txt` (one row per haplotype window):
-`chr`, `pos` (bp), `Wald_log10p`, `Falc_H2`, `Cutl_H2`, `cM`
+`chr`, `pos` (bp), `Wald_log10p`, `H2`, `H2_vc`, `cM`
 
 `<scan>.snp_scan.txt` (one row per SNP):
 `chr`, `pos`, `Wald_log10p`, `cM`, `n_informative_founders`
