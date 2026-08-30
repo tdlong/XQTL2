@@ -778,6 +778,44 @@ Rscript pipeline/scripts/plot_H2_overlay.R \
     --format powerpoint
 ```
 
+The `Falc_H2` and `Cutl_H2` in `<scan>.scan.txt` are **raw** — they square a
+noisy frequency estimate, and `E[x^2] = x_true^2 + Var(x)`, so both carry an
+upward offset that is present whether or not there is real signal. The offset
+scales with the variance of the frequency estimates, so it is larger wherever
+those are less well determined — notably chrX in male pools, which carry half
+the chromosomes per fly. **Raw h2 is therefore not comparable between chrX and
+an autosome, or between sexes on chrX** (XQTL2 #40).
+
+### Bias-corrected heritability
+
+`h2_from_scan.R` recomputes Falconer h2 from a finished scan with the squaring
+bias subtracted, which is the comparable quantity:
+
+```bash
+Rscript pipeline/scripts/h2_from_scan.R \
+    --dir   process/<project> \
+    --scan  <scan_name> \
+    --rfile helpfiles/<project>/design.txt
+```
+
+Writes `<scan_name>.h2_falconer.txt` with `h2_raw`, `h2_bias`, `h2_corr`
+(= raw − bias) and `h2_corr_pos` (its positive part), one row per window, plus
+the `sex`/`xfactor` the smoothed data was built with. Add `--chr` for a single
+chromosome, `--out` for a different destination.
+
+It reads the smoothed `.rds`, **not** the `meansBySample` file, because the bias
+needs the variance of each frequency estimate — multinomial sampling *plus* the
+lsei reconstruction error — and the reconstruction covariance exists only in the
+`.rds`. The multinomial term alone understates the bias. The design file is read
+for one thing, `Proportion`, which sets the Falconer selection intensity; the
+chromosome and the pool sex do not have to be supplied, since `CHROM` is in the
+data, `Num` was already chrX-scaled at Step 5a, and the `.rds` records its
+`--sex`.
+
+`h2_corr` is unbiased, so it scatters negative where the true h2 is zero. That is
+correct for an unbiased estimator of a non-negative quantity, not a defect; use
+`h2_corr_pos` if a non-negative track is wanted.
+
 ### SNP scan
 
 ```bash
