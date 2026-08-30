@@ -59,6 +59,7 @@ while (i <= length(args)) {
     "--rfile" = { parsed$rfile <- args[i+1]; i <- i+2L },
     "--chr"   = { parsed$chr   <- args[i+1]; i <- i+2L },
     "--out"   = { parsed$out   <- args[i+1]; i <- i+2L },
+    "--check" = { parsed$check <- TRUE;          i <- i+1L },
     stop(paste("Unknown argument:", args[i]))
   )
 }
@@ -125,9 +126,10 @@ one_chr <- function(f) {
     mutate(pnorm_ = freq / sum(freq)) %>%
     ungroup() %>%
     # Num is already chrX-scaled; 2*Num is the chromosome count.
-    mutate(vtot = pnorm_ * (1 - pnorm_) / (2 * Num) + vrec) %>%
-    select(CHROM, pos, REP, founder, TRT, freq, vtot) %>%
-    pivot_wider(names_from = TRT, values_from = c(freq, vtot))
+    mutate(mult = pnorm_ * (1 - pnorm_) / (2 * Num),
+           vtot = mult + vrec) %>%
+    select(CHROM, pos, REP, founder, TRT, freq, vtot, mult, vrec) %>%
+    pivot_wider(names_from = TRT, values_from = c(freq, vtot, mult, vrec))
 
   need <- c("freq_C", "freq_Z", "vtot_C", "vtot_Z")
   if (!all(need %in% names(d)))
@@ -141,15 +143,23 @@ one_chr <- function(f) {
     group_by(CHROM, pos, REP, Proportion) %>%
     summarize(raw_sum  = sum((freq_Z - freq_C)^2 / denom),
               bias_sum = sum((vtot_Z + vtot_C)   / denom),
+              mult_sum = sum((mult_Z + mult_C)   / denom),
+              rec_sum  = sum((vrec_Z + vrec_C)   / denom),
+              n_floor  = sum(freq_C <= AF_CUTOFF),
               .groups  = "drop") %>%
     mutate(Falcon_i = dnorm(qnorm(1 - Proportion)) / Proportion,
            h2_raw   = 200 * raw_sum  / Falcon_i^2,
-           h2_bias  = 200 * bias_sum / Falcon_i^2) %>%
+           h2_bias  = 200 * bias_sum / Falcon_i^2,
+           h2_mult  = 200 * mult_sum / Falcon_i^2,
+           h2_rec   = 200 * rec_sum  / Falcon_i^2) %>%
     # the pipeline's h2 is the mean over replicates
     group_by(CHROM, pos) %>%
     summarize(nrepl    = n(),
               h2_raw   = mean(h2_raw),
               h2_bias  = mean(h2_bias),
+              h2_mult  = mean(h2_mult),
+              h2_rec   = mean(h2_rec),
+              n_floor  = mean(n_floor),
               .groups  = "drop") %>%
     mutate(h2_corr     = h2_raw - h2_bias,
            h2_corr_pos = pmax(0, h2_corr),
@@ -163,6 +173,46 @@ res <- bind_rows(lapply(rds_files, function(f) {
 }))
 
 cat("\n")
+# Which half of the variance dominates the bias, and how many founders sit at
+# the AF_CUTOFF floor -- those enter the bias divided by 0.01, so a handful of
+# badly determined low-frequency founders can carry the whole term.
+cat("Bias breakdown (medians): mult = multinomial half, rec = lsei reconstruction half\n")
+res %>% group_by(CHROM) %>%
+  summarize(h2_raw = median(h2_raw), h2_bias = median(h2_bias),
+            from_mult = median(h2_mult), from_recon = median(h2_rec),
+            founders_at_floor = median(n_floor), .groups = "drop") %>%
+  as.data.frame() %>% print(row.names = FALSE)
+cat("\n")
+
+# Cross-check against the pipeline's own columns.  h2_raw must reproduce
+# Falc_H2 and h2_bias must reproduce Falc_H2_bias; if they do, any oddity in
+# h2_corr is in the pipeline's bias, not in this script.
+if (isTRUE(parsed$check)) {
+  sf <- list.files(dirin, pattern = paste0("^", parsed$scan, "\\.scan\\..*\\.txt$"),
+                   full.names = TRUE)
+  if (!length(sf)) {
+    cat("--check: no", paste0(parsed$scan, ".scan.<chr>.txt"), "in", dirin, "\n\n")
+  } else {
+    sc <- bind_rows(lapply(sf, function(x) read.table(x, header = TRUE)))
+    if (!all(c("chr","pos","Falc_H2","Falc_H2_bias") %in% names(sc))) {
+      cat("--check: scan file lacks Falc_H2/Falc_H2_bias; skipping\n\n")
+    } else {
+      cmp <- res %>% inner_join(sc %>% select(chr, pos, Falc_H2, Falc_H2_bias),
+                                by = c("CHROM" = "chr", "pos" = "pos"))
+      cat(sprintf("--check: %d windows matched against %s\n", nrow(cmp), basename(sf[1])))
+      if (nrow(cmp)) {
+        cat(sprintf("  max |h2_raw  - Falc_H2|      = %.3e\n",
+                    max(abs(cmp$h2_raw  - cmp$Falc_H2),      na.rm = TRUE)))
+        cat(sprintf("  max |h2_bias - Falc_H2_bias| = %.3e\n",
+                    max(abs(cmp$h2_bias - cmp$Falc_H2_bias), na.rm = TRUE)))
+        cat("  (both ~0 means this script agrees with the pipeline exactly,\n",
+            "   so any large negative h2_corr is the pipeline's bias term.)\n", sep = "")
+      }
+      cat("\n")
+    }
+  }
+}
+
 res %>% group_by(CHROM, sex, xfactor) %>%
   summarize(windows = n(),
             raw     = median(h2_raw),
