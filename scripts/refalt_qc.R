@@ -129,10 +129,13 @@ for (mychr in chrs) {
   samples <- unique(sub("^REF_", "", grep("^REF_", names(ra), value = TRUE)))
   # What the catalog makes available in a window, before any sample's coverage.
   avail <- sites_per_window(ra$POS, ra$POS)
-  cat(sprintf("  %d sites, %d samples, %d catalog sites per window\n",
+  # %g not %d for avail: it is a median over windows, so an even number of
+  # windows makes it a half-integer and %d errors out (chrX is integral, chr2L
+  # is not). Kept numeric rather than rounded -- pct_window_covered divides by it.
+  cat(sprintf("  %d sites, %d samples, %g catalog sites per window\n",
               nrow(ra), length(samples), avail))
   if (avail < MIN_SITES_PER_FOUNDER * nF)
-    cat(sprintf("  NOTE: only %d catalog sites per %d bp window for %d founders.\n",
+    cat(sprintf("  NOTE: only %g catalog sites per %d bp window for %d founders.\n",
                 avail, 2*size, nF),
         sprintf("        Every sample's haplotype fit is thinly determined here;\n"),
         sprintf("        this is the catalog, not any one sample.\n"), sep = "")
