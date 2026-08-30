@@ -238,7 +238,11 @@ spots2 = spots %>%
         select(-c(start,end)) %>%
         select(-`row_number()`) %>%
         unnest_wider(out) %>%
-        # Add SWErr: sliding window averaged error matrices (±5 rows, 11 total)
+        # Add SWErr: sliding window averaged error matrices (±10 rows, 21 total).
+        # At the usual step = 5000 that is ±50 kb.  The ±10 below is authoritative:
+        # it and the old "±5" comment were committed together in 95d1423, so the
+        # code never drifted -- the comment was simply wrong, and every result the
+        # pipeline has ever produced used 21 windows (XQTL2 #37).
         {
                 n_rows = nrow(.)
                 err_col = .$Err
