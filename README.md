@@ -708,6 +708,22 @@ cross-check — if it does not match the smoothed data, the scan stops and tells
 To scan a different design, re-run `run_scan.sh` with it under a new `--scan` name
 and point this at that.
 
+There is deliberately **no `--sex` here**, for the same reason. The chrX dosage
+factor is applied to `Num` at Step 5a and travels in the smoothed data, so the
+SNP scan inherits the corrected pool sizes rather than deriving its own —
+passing a sex to this step would apply the factor twice (0.5 × 0.5 = 0.25 for
+an all-male pool). The `Num` this scan reads is already scaled, despite coming
+from a file that also takes `--design`. To see which sex the smoothed data you
+are pointing at assumed:
+
+```r
+readRDS("process/<project>/Scans/<scan_name>/<scan_name>.smooth.chrX.rds")$sex
+```
+
+If that is not the sex you meant, re-run Step 5a with the right `--sex` before
+re-running the SNP scan — a stale smoothed file is the one way the SNP scan can
+end up on the wrong chrX dosage.
+
 With `run_full_pipeline.sh`, add `--snp-scan` instead; it needs no extra inputs.
 
 ---
