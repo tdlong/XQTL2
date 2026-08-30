@@ -70,9 +70,14 @@ options(dplyr.summarise.inform = FALSE)
 # ── Load smoothed haplotype data ──────────────────────────────────────────────
 cat("Reading", filein, "\n")
 sm            <- readRDS(filein)
-freq_smoothed <- sm$freq
-err_smoothed  <- sm$err
+freq_smoothed <- sm$freq       # (CHROM, pos, TRT, REP, founder, freq, Num)
+err_smoothed  <- sm$err        # (CHROM, pos, TRT, REP, fi, fj, v)
 nF            <- length(founders)
+
+# Num here is the SCALED pool size: smooth_haps.R applied the chrX dosage factor
+# (sm$xfactor, from its --sex) before writing this file, so N1/N2 below inherit
+# it and must not scale again.  This scan therefore takes no --sex of its own --
+# adding one would apply the factor twice (XQTL2 #39).
 
 # REP is a label, not an index. Use the labels present in both arms; sm$nrepl is
 # a count over the union of the arms, so it is wrong whenever they differ.
@@ -200,7 +205,8 @@ build_err_arr <- function(w_err, trt) {
   arr
 }
 
-# Cache N1/N2 (constant across windows for a given REP)
+# Cache N1/N2 (constant across windows for a given REP).  Num comes from the
+# smoothed rds, already chrX-scaled -- see the note at the readRDS above.
 N1 <- freq_chr %>% filter(TRT=="C", CHROM==mychr) %>%
   group_by(REP) %>% slice(1) %>% ungroup() %>%
   arrange(match(REP, rep_labels)) %>% pull(Num)
