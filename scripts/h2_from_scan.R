@@ -46,7 +46,14 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
-AF_CUTOFF <- 0.01     # matches hap_scan.R
+# fill_gaps()/running_mean() are shared with smooth_haps.R.
+script_dir <- dirname(normalizePath(sub("--file=", "",
+                grep("--file=", commandArgs(FALSE), value = TRUE))))
+source(file.path(script_dir, "scan_functions.R"))
+
+AF_CUTOFF   <- 0.01   # matches hap_scan.R
+CONFOUND_R  <- -0.99  # correlation below which a founder pair is unidentified
+FILL_HALF   <- 50L    # flanking windows averaged for the gap-fill anchors
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 args   <- commandArgs(trailingOnly = TRUE)
@@ -105,11 +112,46 @@ one_chr <- function(f) {
   xfactor <- if (!is.null(sm$xfactor)) sm$xfactor else NA_real_
 
   freq <- sm$freq
-  # Only the diagonal of the reconstruction covariance enters the Falconer
-  # bias; fi indexes founder_names, the same order hap_scan.R assumes.
-  errd <- sm$err %>% filter(fi == fj) %>%
+
+  # Repair the covariance for unresolvable founders (XQTL2 #40).
+  #
+  # Where >1 founder shares a group, lsei identifies only the group sum, not the
+  # individual founders.  It returns a perfectly anti-correlated block: huge,
+  # equal marginal variances that cancel in their sum.  smooth_haps.R masks and
+  # gap-fills the FREQUENCIES of those founders but, before this fix, left the
+  # covariance untouched -- so the bias subtracted error bars up to 48,000x too
+  # large for frequencies that had already been repaired.
+  #
+  # smooth_haps.R now masks the covariance at source.  Files written before that
+  # still carry the raw block, so detect and repair it here too, which lets an
+  # existing scan be corrected without re-running the smooth step.  A confounded
+  # pair is identified by its correlation: exactly -1 up to rounding, against a
+  # bulk that sits near 0.  On real chrX data this flags 6.2% of founder-windows
+  # and they carry 99.3% of the total variance mass.
+  vd <- sm$err %>% filter(fi == fj) %>% select(CHROM, pos, TRT, REP, fi, vdiag = v)
+  confounded <- sm$err %>% filter(fi != fj) %>%
+    left_join(vd,                     by = c("CHROM","pos","TRT","REP","fi")) %>%
+    left_join(vd %>% rename(fj = fi, vdiag_j = vdiag),
+                                      by = c("CHROM","pos","TRT","REP","fj")) %>%
+    mutate(r = v / sqrt(vdiag * vdiag_j)) %>%
+    group_by(CHROM, pos, TRT, REP, fi) %>%
+    summarize(bad = any(r < CONFOUND_R, na.rm = TRUE), .groups = "drop")
+
+  errd <- vd %>%
+    left_join(confounded, by = c("CHROM","pos","TRT","REP","fi")) %>%
+    mutate(vrec = if_else(coalesce(bad, FALSE), NA_real_, vdiag)) %>%
+    arrange(CHROM, pos) %>%
+    group_by(CHROM, TRT, REP, fi) %>%
+    # gap-fill from flanking windows, as the frequencies already were
+    mutate(vrec = fill_gaps(vrec, FILL_HALF)) %>%
+    ungroup() %>%
     transmute(CHROM, pos, TRT, REP = as.character(REP),
-              founder = founder_names[fi], vrec = v)
+              founder = founder_names[fi], vrec, repaired = coalesce(bad, FALSE))
+
+  n_rep <- sum(errd$repaired)
+  if (n_rep)
+    cat(sprintf("  repaired %d / %d founder-windows (%.1f%%) with unresolvable covariance\n",
+                n_rep, nrow(errd), 100 * n_rep / nrow(errd)))
 
   freq <- freq %>% mutate(REP = as.character(REP))
 
@@ -128,8 +170,8 @@ one_chr <- function(f) {
     # Num is already chrX-scaled; 2*Num is the chromosome count.
     mutate(mult = pnorm_ * (1 - pnorm_) / (2 * Num),
            vtot = mult + vrec) %>%
-    select(CHROM, pos, REP, founder, TRT, freq, vtot, mult, vrec) %>%
-    pivot_wider(names_from = TRT, values_from = c(freq, vtot, mult, vrec))
+    select(CHROM, pos, REP, founder, TRT, freq, vtot, mult, vrec, repaired) %>%
+    pivot_wider(names_from = TRT, values_from = c(freq, vtot, mult, vrec, repaired))
 
   need <- c("freq_C", "freq_Z", "vtot_C", "vtot_Z")
   if (!all(need %in% names(d)))
@@ -146,6 +188,7 @@ one_chr <- function(f) {
               mult_sum = sum((mult_Z + mult_C)   / denom),
               rec_sum  = sum((vrec_Z + vrec_C)   / denom),
               n_floor  = sum(freq_C <= AF_CUTOFF),
+              n_repair = sum(repaired_C | repaired_Z),
               .groups  = "drop") %>%
     mutate(Falcon_i = dnorm(qnorm(1 - Proportion)) / Proportion,
            h2_raw   = 200 * raw_sum  / Falcon_i^2,
@@ -160,6 +203,7 @@ one_chr <- function(f) {
               h2_mult  = mean(h2_mult),
               h2_rec   = mean(h2_rec),
               n_floor  = mean(n_floor),
+              n_repair = mean(n_repair),
               .groups  = "drop") %>%
     mutate(h2_corr     = h2_raw - h2_bias,
            h2_corr_pos = pmax(0, h2_corr),

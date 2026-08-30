@@ -2,6 +2,82 @@
 # Functions
 #########
 
+# ── Running mean (edge-aware, O(n), NA-safe) ──────────────────────────────────
+running_mean <- function(x, h) {
+  n  <- length(x); if (n == 0L) return(numeric(0))
+  ok <- !is.na(x)
+  xc <- replace(x, !ok, 0)
+  cs <- c(0, cumsum(xc)); cn <- c(0, cumsum(as.numeric(ok)))
+  lo <- pmax(1L, seq_len(n) - h); hi <- pmin(n, seq_len(n) + h)
+  tot <- cs[hi+1L] - cs[lo]; cnt <- cn[hi+1L] - cn[lo]
+  ifelse(cnt > 0L, tot/cnt, NA_real_)
+}
+
+# ── Gap filler (mean-anchored interpolation) ─────────────────────────────────
+# For each contiguous run of NAs ("gap"), compute the mean of up to h valid
+# positions on each flank, then linearly interpolate across the gap between
+# those two mean anchors.
+#
+# Why not just use the values right at the gap boundary?  The haplotype
+# estimator resolves founders by cutting a distance tree (hclust + cutree).
+# Positions right at the gap edge just barely passed the cutoff — their
+# frequency estimates are only marginally better than the unresolved ones
+# inside the gap.  Averaging h flanking positions gives robust anchor values
+# driven by the well-resolved interior, not the noisy boundary.
+#
+# Leading/trailing NAs (no flank on one side) get a flat fill from the
+# available flank's mean.  If no valid data exists at all, NAs remain.
+
+fill_gaps <- function(x, h) {
+  n  <- length(x)
+  if (n == 0L || !anyNA(x)) return(x)
+
+  ok  <- !is.na(x)
+  if (!any(ok)) return(x)                   # all NA — nothing to anchor on
+
+  # Identify contiguous NA runs (gaps)
+  rle_na  <- rle(!ok)
+  ends    <- cumsum(rle_na$lengths)
+  starts  <- ends - rle_na$lengths + 1L
+
+  for (g in which(rle_na$values)) {
+    ga <- starts[g]                          # first NA in this gap
+    gb <- ends[g]                            # last  NA in this gap
+
+    # Left flank: mean of up to h valid positions before the gap
+    left_idx <- which(ok & seq_along(x) < ga)
+    if (length(left_idx) > 0L) {
+      anchor_L <- mean(x[tail(left_idx, h)])
+    } else {
+      anchor_L <- NULL
+    }
+
+    # Right flank: mean of up to h valid positions after the gap
+    right_idx <- which(ok & seq_along(x) > gb)
+    if (length(right_idx) > 0L) {
+      anchor_R <- mean(x[head(right_idx, h)])
+    } else {
+      anchor_R <- NULL
+    }
+
+    # Fill the gap
+    gap_len <- gb - ga + 1L
+    if (!is.null(anchor_L) && !is.null(anchor_R)) {
+      # Both flanks: linear interpolation between the two trend-based anchors
+      x[ga:gb] <- seq(anchor_L, anchor_R, length.out = gap_len)
+    } else if (!is.null(anchor_L)) {
+      # Leading edge only: flat fill from left trend
+      x[ga:gb] <- anchor_L
+    } else if (!is.null(anchor_R)) {
+      # Trailing edge only: flat fill from right trend
+      x[ga:gb] <- anchor_R
+    }
+    # else: no flanks at all, leave as NA
+  }
+  x
+}
+
+
 average_variance <- function(cov_matrix, tolerance = 1e-10) {
   n <- nrow(cov_matrix)  
   # Calculate eigenvalues

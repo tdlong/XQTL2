@@ -76,86 +76,17 @@ if (!sex %in% names(SEX_XFACTOR))
        "  mixed = equal numbers of males and females (the default)")
 xfactor <- if (mychr == "chrX") unname(SEX_XFACTOR[sex]) else 1.0
 
+# running_mean() and fill_gaps() live in scan_functions.R so this script and
+# h2_from_scan.R repair a series the same way (XQTL2 #40).
+script_dir <- dirname(normalizePath(sub("--file=", "",
+                grep("--file=", commandArgs(FALSE), value = TRUE))))
+source(file.path(script_dir, "scan_functions.R"))
+
 # Stage layout: scans go under Scans/<scan> (see reorganize_project.sh).
 dirout        <- file.path(parsed$dir, "Scans", parsed$outdir)
 fileout_rds   <- file.path(dirout, paste0(parsed$outdir, ".smooth.", mychr, ".rds"))
 fileout_means <- file.path(dirout, paste0(parsed$outdir, ".meansBySample.", mychr, ".txt"))
 dir.create(dirout, showWarnings = FALSE, recursive = TRUE)
-
-# ── Running mean (edge-aware, O(n), NA-safe) ──────────────────────────────────
-running_mean <- function(x, h) {
-  n  <- length(x); if (n == 0L) return(numeric(0))
-  ok <- !is.na(x)
-  xc <- replace(x, !ok, 0)
-  cs <- c(0, cumsum(xc)); cn <- c(0, cumsum(as.numeric(ok)))
-  lo <- pmax(1L, seq_len(n) - h); hi <- pmin(n, seq_len(n) + h)
-  tot <- cs[hi+1L] - cs[lo]; cnt <- cn[hi+1L] - cn[lo]
-  ifelse(cnt > 0L, tot/cnt, NA_real_)
-}
-
-# ── Gap filler (mean-anchored interpolation) ─────────────────────────────────
-# For each contiguous run of NAs ("gap"), compute the mean of up to h valid
-# positions on each flank, then linearly interpolate across the gap between
-# those two mean anchors.
-#
-# Why not just use the values right at the gap boundary?  The haplotype
-# estimator resolves founders by cutting a distance tree (hclust + cutree).
-# Positions right at the gap edge just barely passed the cutoff — their
-# frequency estimates are only marginally better than the unresolved ones
-# inside the gap.  Averaging h flanking positions gives robust anchor values
-# driven by the well-resolved interior, not the noisy boundary.
-#
-# Leading/trailing NAs (no flank on one side) get a flat fill from the
-# available flank's mean.  If no valid data exists at all, NAs remain.
-
-fill_gaps <- function(x, h) {
-  n  <- length(x)
-  if (n == 0L || !anyNA(x)) return(x)
-
-  ok  <- !is.na(x)
-  if (!any(ok)) return(x)                   # all NA — nothing to anchor on
-
-  # Identify contiguous NA runs (gaps)
-  rle_na  <- rle(!ok)
-  ends    <- cumsum(rle_na$lengths)
-  starts  <- ends - rle_na$lengths + 1L
-
-  for (g in which(rle_na$values)) {
-    ga <- starts[g]                          # first NA in this gap
-    gb <- ends[g]                            # last  NA in this gap
-
-    # Left flank: mean of up to h valid positions before the gap
-    left_idx <- which(ok & seq_along(x) < ga)
-    if (length(left_idx) > 0L) {
-      anchor_L <- mean(x[tail(left_idx, h)])
-    } else {
-      anchor_L <- NULL
-    }
-
-    # Right flank: mean of up to h valid positions after the gap
-    right_idx <- which(ok & seq_along(x) > gb)
-    if (length(right_idx) > 0L) {
-      anchor_R <- mean(x[head(right_idx, h)])
-    } else {
-      anchor_R <- NULL
-    }
-
-    # Fill the gap
-    gap_len <- gb - ga + 1L
-    if (!is.null(anchor_L) && !is.null(anchor_R)) {
-      # Both flanks: linear interpolation between the two trend-based anchors
-      x[ga:gb] <- seq(anchor_L, anchor_R, length.out = gap_len)
-    } else if (!is.null(anchor_L)) {
-      # Leading edge only: flat fill from left trend
-      x[ga:gb] <- anchor_L
-    } else if (!is.null(anchor_R)) {
-      # Trailing edge only: flat fill from right trend
-      x[ga:gb] <- anchor_R
-    }
-    # else: no flanks at all, leave as NA
-  }
-  x
-}
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 filein <- file.path(parsed$dir, "Haps", paste0("R.haps.", mychr, ".out.rds"))
@@ -282,17 +213,69 @@ fj_tmpl <- rep(seq_len(nF_cov), each = nF_cov)        # col indices
 v_mat   <- do.call(rbind, lapply(err_unnested$Err,     # n_rows x nF2
              function(m) as.vector(as.matrix(m))))
 
-err_smoothed <- err_unnested %>%
+# Mask unresolvable founders in the covariance, exactly as the frequencies were
+# masked above (XQTL2 #40).  When >1 founder shares a group at a window, lsei
+# does not identify their individual frequencies -- only the group sum -- and it
+# does not identify their individual variances either.  What it returns for such
+# a pair is a perfectly anti-correlated block: marginal variances that are huge
+# and equal, and a covariance that cancels them.  Observed on real data at
+# chrX:9205000 --
+#
+#   Var(B6) = 0.5514   Var(B7) = 0.5516   Cov = -0.5515   corr = -1.0000
+#   Var(B6) + Var(B7) = 1.1030      Var(B6 + B7) = 0.000023
+#
+# 0.5516 is not a possible variance for a quantity bounded in [0,1], where the
+# maximum is 0.25.  The frequencies for these founders are repaired -- masked,
+# gap-filled from flanking windows, rescaled to the lsei group sum -- so the
+# numbers the scan squares are well determined.  Leaving the covariance
+# unrepaired pairs those repaired frequencies with error bars up to 48,000x too
+# large, which is what drove h2 to -1194 at this window.
+#
+# So give the covariance the same three steps the frequencies get: mask,
+# fill_gaps from the flanks, then smooth.  An entry is masked if EITHER founder
+# it refers to is unresolved, since a covariance with an unidentified founder is
+# itself unidentified.  This corrects the heritability bias and, through
+# hap_scan.R's cv1/cv2 and N1e/N2e, the Wald test in the same regions.
+#
+# Index order: fi/fj index the founders in the order they appear in Names within
+# a (window, pool), which is the order of the Err matrix rows.
+unresolved_tbl <- xx1 %>%
+  select(CHROM, pos, sample, Names, Groups) %>%
+  unnest(c(sample, Names, Groups)) %>%
+  rename(pool = sample) %>%
+  unnest(c(Names, Groups)) %>%
+  group_by(CHROM, pos, pool) %>%
+  mutate(idx = row_number()) %>%
+  group_by(CHROM, pos, pool, Groups) %>%
+  mutate(unresolved = n() > 1L) %>%
+  ungroup() %>%
+  select(CHROM, pos, pool, idx, unresolved)
+
+err_long <- err_unnested %>%
   select(-Err) %>%
   tidyr::uncount(nF2) %>%
   mutate(fi = rep(fi_tmpl, nrow(err_unnested)),
          fj = rep(fj_tmpl, nrow(err_unnested)),
          v  = as.vector(t(v_mat))) %>%
+  left_join(unresolved_tbl %>% rename(fi = idx, un_i = unresolved),
+            by = c("CHROM", "pos", "pool", "fi")) %>%
+  left_join(unresolved_tbl %>% rename(fj = idx, un_j = unresolved),
+            by = c("CHROM", "pos", "pool", "fj")) %>%
+  mutate(v = if_else(coalesce(un_i, FALSE) | coalesce(un_j, FALSE), NA_real_, v))
+
+n_masked_cov <- sum(is.na(err_long$v))
+cat(sprintf("  Masked %d / %d covariance entries (%.1f%%) as unresolvable\n",
+            n_masked_cov, nrow(err_long), 100 * n_masked_cov / nrow(err_long)))
+
+err_smoothed <- err_long %>%
   group_by(CHROM, pos, TRT, REP, fi, fj) %>%
-  summarize(v = mean(v, na.rm = TRUE), .groups = "drop") %>%
+  # na.rm=FALSE: a masked entry must survive the pool average to reach
+  # fill_gaps, the same reason the frequency masking uses pmax(na.rm=FALSE).
+  summarize(v = mean(v), .groups = "drop") %>%
   arrange(CHROM, pos) %>%
   group_by(TRT, REP, fi, fj) %>%
-  mutate(v = running_mean(v, smooth_half)) %>%
+  mutate(v = fill_gaps(v, smooth_half),
+         v = running_mean(v, smooth_half)) %>%
   ungroup()
 
 # ── Save smoothed data for steps 2 and 3 ─────────────────────────────────────
