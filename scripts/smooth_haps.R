@@ -146,10 +146,38 @@ xx1 <- readRDS(filein)
 
 step_bp     <- as.integer(median(diff(xx1$pos), na.rm = TRUE))
 smooth_half <- round(smooth_kb * 1000L / step_bp)
-sexlink     <- if (mychr == "chrX") 0.75 else 1.0
 
 cat(sprintf("  %d windows | step %d bp | smooth_half %d windows (+/-%d kb)\n",
             nrow(xx1), step_bp, smooth_half, smooth_kb))
+
+# chrX dosage.  Num is a count of flies, and everything downstream uses 2*Num
+# chromosomes -- right for an autosome, too many for the X.  The correct factor
+# is the mean number of X chromosomes per fly over 2, so it is set by the sex
+# composition of the pool: 1.0 all-female (2 X per fly), 0.5 all-male (1 X),
+# 0.75 an equal mix (1.5 X).
+#
+# The optional design column Xfactor states it per pool.  When it is absent we
+# keep the 0.75 this pipeline has always applied, so existing projects give
+# byte-identical results -- but 0.75 is only right for a mixed pool, and a
+# single-sex project must set the column (XQTL2 #38).
+if (mychr == "chrX") {
+  if (!"Xfactor" %in% names(design.df)) {
+    design.df$Xfactor <- 0.75
+    cat("  chrX: no Xfactor column in the design file, so assuming every pool\n",
+        "        holds equal numbers of males and females (Xfactor 0.75).\n",
+        "        Single-sex pools MUST set it: 1.0 all-female, 0.5 all-male.\n",
+        sep = "")
+  } else {
+    xf <- design.df$Xfactor
+    if (!is.numeric(xf) || any(is.na(xf)) || any(xf <= 0 | xf > 1))
+      stop("design column Xfactor must be numeric and in (0, 1] for every row: ",
+           "1.0 all-female, 0.5 all-male, 0.75 an equal mix.")
+    cat(sprintf("  chrX: Xfactor from design file (%s)\n",
+                paste(format(sort(unique(xf))), collapse = ", ")))
+  }
+} else {
+  design.df$Xfactor <- 1.0
+}
 
 options(dplyr.summarise.inform = FALSE)
 
@@ -166,7 +194,7 @@ freq_raw <- xx1 %>%
   rename(pool = sample, freq = Haps, founder = Names, group = Groups) %>%
   left_join(design.df, by = c("pool" = "bam")) %>%
   filter(!is.na(TRT)) %>%
-  mutate(Num = sexlink * Num)
+  mutate(Num = Xfactor * Num)
 
 # Mask unresolvable founders: if >1 founder shares a group at a window,
 # those founders' individual frequencies are arbitrary (only their sum is

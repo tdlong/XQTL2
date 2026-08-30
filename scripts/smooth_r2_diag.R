@@ -38,7 +38,6 @@ r2_all <- vector("list", length(chrs))
 
 for (ci in seq_along(chrs)) {
   mychr   <- chrs[ci]
-  sexlink <- if (mychr == "chrX") 0.75 else 1.0
 
   haps_file   <- file.path(parsed$hapsdir,
                             paste0("R.haps.", mychr, ".out.rds"))

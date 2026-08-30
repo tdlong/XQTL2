@@ -506,6 +506,29 @@ case-sensitive** — the pipeline refers to them by exact name.
 | `REPrep` | Technical replicate within replicate (usually `1`) |
 | `Num` | Number of flies in pool |
 | `Proportion` | Fraction selected (`NA` for controls) |
+| `Xfactor` | *Optional.* chrX dosage — see below. Omit for mixed-sex pools. |
+
+#### `Xfactor` — required for single-sex pools
+
+`Num` counts flies, and the scan works in chromosomes: `2 * Num` of them. That
+is right on an autosome, where every fly carries two. On chrX it depends on the
+sex composition of the pool, so `Num` is scaled by `Xfactor`, the mean number of
+X chromosomes per fly divided by two:
+
+| Pool | `Xfactor` |
+|------|-----------|
+| Equal numbers of males and females | `0.75` (1.5 X per fly) |
+| All female | `1.0` (2 X per fly) |
+| All male | `0.5` (1 X per fly) |
+
+**Omit the column and every pool is assumed mixed (`0.75`)** — which is what the
+pipeline has always assumed, so existing projects are unaffected. If your pools
+are single-sex, you must set it: at `0.75` a male pool is credited with 1.5× the
+X chromosomes it carries and a female pool with 0.75×, which inflates chrX
+statistics for males and deflates them for females. Autosomes are never affected.
+
+The column is per row, so a project mixing single-sex and mixed pools sets each
+one accordingly.
 
 Create and save from R (use `write.table` defaults — row numbers are included):
 
@@ -517,6 +540,7 @@ design <- data.frame(
     REPrep     = 1,
     Num        = c(1205,115,1387,296,1631,174),
     Proportion = c(NA,0.087,NA,0.154,NA,0.088)
+    # , Xfactor = 0.5   # single-sex pools only: 0.5 all-male, 1.0 all-female
 )
 write.table(design, "helpfiles/<project>/design.txt")
 ```
