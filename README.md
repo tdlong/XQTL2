@@ -824,13 +824,13 @@ subtraction weights all founders equally. `τ²` is fitted per window, not
 genome-wide: a single global prior would be dragged to nothing by the ~95% of
 windows that are null and would shrink real QTL several-fold.
 
-The Wald test and SNP scan are **not** affected by this. They consume the whole
-covariance matrix — `hap_scan.R` inverts it, so an inflated variance direction is
-automatically down-weighted, and `snp_scan.R` forms `s'Es`, where the negative
-covariance cancels the inflated diagonals. The heritability bias is the one
-consumer that sums the bare diagonal, where nothing cancels. Recomputing the Wald
-on real chrX data with and without a repaired covariance left the maximum
-`-log10p` unchanged at 5.76 and the number of windows above 5 unchanged at 36.
+The covariance repair is applied in `smooth_haps.R`, so it reaches every consumer
+— the Wald test and the SNP scan as well as heritability. The heritability bias
+was hit hardest because it sums the bare diagonal, where nothing cancels, but the
+Wald moves too: on real chrX data the corrected `-log10p` differs by up to 1.23
+log units per window (18 of 4212 windows by more than 0.5), almost always
+upwards, because the inflated variance had been making those windows
+over-conservative. **Scans smoothed before this fix should be re-run.**
 
 #### Run `smooth_r2_diag` first
 

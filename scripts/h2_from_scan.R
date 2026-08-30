@@ -180,22 +180,14 @@ one_chr <- function(f) {
   # covariance untouched -- so the bias subtracted error bars up to 48,000x too
   # large for frequencies that had already been repaired.
   #
-  # smooth_haps.R now masks the covariance at source.  Files written before that
-  # still carry the raw block, so detect and repair it here too, which lets an
-  # existing scan be corrected without re-running the smooth step.  A confounded
+  # smooth_haps.R now masks the covariance at source, so a freshly smoothed rds
+  # arrives already repaired and the detector below finds nothing -- the filled
+  # block is no longer perfectly anti-correlated.  Files written before that fix
+  # still carry the raw block, so repair it here too, which lets an existing
+  # scan be corrected without re-running the smooth step.  A confounded
   # pair is identified by its correlation: exactly -1 up to rounding, against a
   # bulk that sits near 0.  On real chrX data this flags 6.2% of founder-windows
   # and they carry 99.3% of the total variance mass.
-  if ("vrec" %in% names(freq)) {
-    # Written by smooth_haps.R from the #40 fix onward: already masked on the
-    # same group_size rule the frequencies used, gap-filled and smoothed.
-    cat("  using the repaired reconstruction variance from the rds\n")
-    errd <- freq %>%
-      transmute(CHROM, pos, TRT, REP = as.character(REP), founder,
-                vrec, repaired = is.na(vrec))
-    freq <- freq %>% select(-vrec)
-  } else {
-
   vd <- sm$err %>% filter(fi == fj) %>% select(CHROM, pos, TRT, REP, fi, vdiag = v)
   confounded <- sm$err %>% filter(fi != fj) %>%
     left_join(vd,                     by = c("CHROM","pos","TRT","REP","fi")) %>%
@@ -220,7 +212,6 @@ one_chr <- function(f) {
   if (n_rep)
     cat(sprintf("  repaired %d / %d founder-windows (%.1f%%) with unresolvable covariance\n",
                 n_rep, nrow(errd), 100 * n_rep / nrow(errd)))
-  }
 
   freq <- freq %>% mutate(REP = as.character(REP))
 

@@ -213,75 +213,68 @@ fj_tmpl <- rep(seq_len(nF_cov), each = nF_cov)        # col indices
 v_mat   <- do.call(rbind, lapply(err_unnested$Err,     # n_rows x nF2
              function(m) as.vector(as.matrix(m))))
 
-err_smoothed <- err_unnested %>%
+# Mask unresolvable founders in the covariance, exactly as the frequencies were
+# masked above (XQTL2 #40).  Where >1 founder shares a group, lsei identifies
+# only the group sum.  It does not identify their individual variances either:
+# it returns a perfectly anti-correlated block.  Observed at chrX:9205000 in
+# AGE_SY20_M_no89 --
+#
+#   Var(B6) = 0.5514   Var(B7) = 0.5516   Cov = -0.5515   corr = -1.0000
+#   Var(B6) + Var(B7) = 1.1030      Var(B6 + B7) = 0.000023
+#
+# 0.5516 is not a possible variance for a quantity bounded in [0,1], where the
+# maximum is 0.25.  These entries are wrong, not merely large: the linearised
+# lsei covariance ignores the constraints the estimator itself is subject to.
+#
+# The frequencies for these founders are masked, gap-filled from flanking
+# windows and rescaled to the lsei group sum, so what every downstream step
+# actually squares or contrasts is an IMPUTED frequency.  The uncertainty that
+# belongs beside it is the uncertainty of that imputation, which is what the
+# flanking windows carry -- not the unbounded uncertainty of a raw estimate that
+# was discarded.  So the covariance gets the same three steps: mask, fill_gaps,
+# smooth.  An entry is masked if either founder it refers to is unresolved,
+# since a covariance with an unidentified founder is itself unidentified.
+#
+# Index order: fi/fj index founders in the order they appear in Names within a
+# (window, pool), which is the order of the Err matrix rows.
+unresolved_tbl <- xx1 %>%
+  select(CHROM, pos, sample, Names, Groups) %>%
+  unnest(c(sample, Names, Groups)) %>%
+  rename(pool = sample) %>%
+  unnest(c(Names, Groups)) %>%
+  group_by(CHROM, pos, pool) %>%
+  mutate(idx = row_number()) %>%
+  group_by(CHROM, pos, pool, Groups) %>%
+  mutate(unresolved = n() > 1L) %>%
+  ungroup() %>%
+  select(CHROM, pos, pool, idx, unresolved)
+
+err_long <- err_unnested %>%
   select(-Err) %>%
   tidyr::uncount(nF2) %>%
   mutate(fi = rep(fi_tmpl, nrow(err_unnested)),
          fj = rep(fj_tmpl, nrow(err_unnested)),
          v  = as.vector(t(v_mat))) %>%
+  left_join(unresolved_tbl %>% rename(fi = idx, un_i = unresolved),
+            by = c("CHROM", "pos", "pool", "fi")) %>%
+  left_join(unresolved_tbl %>% rename(fj = idx, un_j = unresolved),
+            by = c("CHROM", "pos", "pool", "fj")) %>%
+  mutate(v = if_else(coalesce(un_i, FALSE) | coalesce(un_j, FALSE), NA_real_, v))
+
+n_masked_cov <- sum(is.na(err_long$v))
+cat(sprintf("  Masked %d / %d covariance entries (%.1f%%) as unresolvable\n",
+            n_masked_cov, nrow(err_long), 100 * n_masked_cov / nrow(err_long)))
+
+err_smoothed <- err_long %>%
   group_by(CHROM, pos, TRT, REP, fi, fj) %>%
-  summarize(v = mean(v, na.rm = TRUE), .groups = "drop") %>%
+  # na.rm=FALSE: a masked entry must survive the pool average to reach
+  # fill_gaps, the same reason the frequency path masks before pmax(na.rm=FALSE).
+  summarize(v = mean(v), .groups = "drop") %>%
   arrange(CHROM, pos) %>%
   group_by(TRT, REP, fi, fj) %>%
-  mutate(v = running_mean(v, smooth_half)) %>%
+  mutate(v = fill_gaps(v, smooth_half),
+         v = running_mean(v, smooth_half)) %>%
   ungroup()
-
-# ── Repaired reconstruction variance for heritability (XQTL2 #40) ────────────
-# Where >1 founder shares a group, lsei identifies only the group sum.  It does
-# not identify the founders' individual variances either: it returns a perfectly
-# anti-correlated block.  Observed at chrX:9205000 in AGE_SY20_M_no89 --
-#
-#   Var(B6) = 0.5514   Var(B7) = 0.5516   Cov = -0.5515   corr = -1.0000
-#   Var(B6) + Var(B7) = 1.1030      Var(B6 + B7) = 0.000023
-#
-# 0.5516 is not a possible variance for a quantity bounded in [0,1].
-#
-# err_smoothed is deliberately left ALONE.  Its consumers use the whole matrix
-# and are already protected: hap_scan.R inverts it, so a huge-variance direction
-# is automatically down-weighted, and snp_scan.R forms s'Es, where the negative
-# covariance cancels the inflated diagonals for any SNP that does not split the
-# confounded pair -- and where a SNP does split it, a large variance is the
-# correct answer.  Recomputing the Wald on the real chrX rds with and without a
-# repaired covariance moved the maximum -log10p not at all (5.76 both ways) and
-# the count of windows above 5 not at all (36 both ways).
-#
-# The heritability bias is the one consumer that takes the bare DIAGONAL, summed
-# over founders, where nothing cancels and nothing is down-weighted.  So repair
-# only that, and carry it beside the frequencies it describes.  The frequencies
-# for these founders were masked, gap-filled and rescaled above, so their error
-# bars must be repaired the same way or the two describe different estimators.
-cat("Building repaired reconstruction variance for heritability...\n")
-
-diag_raw <- xx1 %>%
-  select(CHROM, pos, sample, Err, Names) %>%
-  unnest(c(sample, Err, Names)) %>%
-  rename(pool = sample) %>%
-  mutate(vd = lapply(Err, function(m) diag(as.matrix(m)))) %>%
-  select(CHROM, pos, pool, Names, vd) %>%
-  unnest(c(Names, vd)) %>%
-  rename(founder = Names, vrec = vd)
-
-# group_size comes from the same masking rule the frequencies used.
-vrec_smoothed <- freq_raw %>%
-  select(CHROM, pos, pool, founder, TRT, REP, group_size) %>%
-  left_join(diag_raw, by = c("CHROM", "pos", "pool", "founder")) %>%
-  mutate(vrec = if_else(group_size > 1L, NA_real_, vrec)) %>%
-  group_by(CHROM, pos, TRT, REP, founder) %>%
-  # na.rm=FALSE so a mask survives the pool average and reaches fill_gaps,
-  # the same reason the frequency path masks before pmax(na.rm=FALSE).
-  summarize(vrec = mean(vrec), .groups = "drop") %>%
-  arrange(CHROM, pos) %>%
-  group_by(TRT, REP, founder) %>%
-  mutate(vrec = fill_gaps(vrec, smooth_half),
-         vrec = running_mean(vrec, smooth_half)) %>%
-  ungroup()
-
-n_vmask <- sum(is.na(vrec_smoothed$vrec))
-cat(sprintf("  %d / %d founder-windows had no resolvable variance to average\n",
-            n_vmask, nrow(vrec_smoothed)))
-
-freq_smoothed <- freq_smoothed %>%
-  left_join(vrec_smoothed, by = c("CHROM", "pos", "TRT", "REP", "founder"))
 
 # ── Save smoothed data for steps 2 and 3 ─────────────────────────────────────
 founder_names <- sort(unique(freq_smoothed$founder))
