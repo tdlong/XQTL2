@@ -837,6 +837,30 @@ founders carrying the h2, and 0.14× for a founder at C = 0.003.
 `h2_rep_vc` applies the same per-window variance component to the measured
 variance, giving a non-negative track.
 
+**Ploidy.** For a locus with founder haplotypes at frequencies `p_f` and additive
+effects `a_f`, truncation selection at intensity `i` gives `Δp_f = p_f·i·(a_f−ā)`,
+so with `k` allele copies per fly
+
+```
+V_A = k · Σ p_f (a_f − ā)²  =  (k/i²) · Σ Δp_f²/p_f
+```
+
+and `h² = 100k/i² · Σ Δp²/p` as a percentage. The `1/p` weighting is therefore
+correct as it stands — the `p(1−p)` of the textbook biallelic form is what
+`p_f(a_f−ā)²` collapses to for two alleles and does not generalise. But the
+leading constant is `100k`, so a hardcoded 200 assumes `k = 2`:
+
+| locus | `k` | constant |
+|---|---|---|
+| autosome, female X | 2 | 200 |
+| male X (hemizygous) | 1 | 100 |
+| mixed-sex X | 1.5 | 150 |
+
+`k/2` is `xfactor`. #38 applied it to `Num`, i.e. to the sampling variance; it
+belongs on the genetic variance too and was never applied there. Without it a
+hemizygous locus is credited with the additive variance of a diploid one and
+male-X h2 comes out 2× too large for the same frequency shift.
+
 `h2_vc` (below) is the older form built on the modelled variance and is kept for
 comparison only. h2 is a variance, so it is estimated as one: on the scale
 `u = (Z−C)/√C` the statistic is `200/i² · Σu²`, each `û_f` carries known noise

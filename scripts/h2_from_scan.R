@@ -271,6 +271,32 @@ one_chr <- function(f) {
   #
   # Replicates differ in Proportion, so what they measure in common is the
   # response per unit selection intensity, d/i, not d itself.
+  # Ploidy.  Derived rather than taken from the textbook form: for a locus with
+  # founder haplotypes at frequencies p_f and additive effects a_f, truncation
+  # selection at intensity i gives Dp_f = p_f * i * (a_f - abar), so
+  # (a_f - abar) = Dp_f / (i p_f), and with k allele copies per fly
+  #
+  #   V_A = k * sum_f p_f (a_f - abar)^2 = (k / i^2) * sum_f Dp_f^2 / p_f
+  #
+  # so h2 = 100 * k / i^2 * sum(Dp^2 / p) as a percentage.  Two consequences.
+  # The 1/p weighting is right as it stands -- the p(1-p) of the textbook
+  # biallelic form is just what p_f (a_f - abar)^2 collapses to for two alleles,
+  # and does not generalise to a multi-allelic locus.  And the leading constant
+  # is 100*k, so the pipeline's 200 hardcodes k = 2:
+  #
+  #   autosome, female X   k = 2    -> 200
+  #   male X (hemizygous)  k = 1    -> 100
+  #   mixed-sex X          k = 1.5  -> 150
+  #
+  # k/2 is xfactor, which smooth_haps.R already records.  #38 applied it to Num,
+  # i.e. to the sampling variance; it belongs on the genetic variance too, and
+  # was never applied there.  Without it a hemizygous locus is credited with the
+  # additive variance of a diploid one, and a male-X h2 comes out 2x too large
+  # for the same frequency shift -- which is exactly the complaint that the
+  # shifts look autosomal in size while the Wald, which does track the halved
+  # chromosome count, says the evidence is weak.
+  PLOIDY <- if (is.na(xfactor)) 1.0 else xfactor
+
   rep_tbl <- d %>%
     mutate(e = (freq_Z - freq_C) / Falcon_i_rep) %>%
     group_by(CHROM, pos, founder) %>%
@@ -282,8 +308,8 @@ one_chr <- function(f) {
     arrange(CHROM, pos, founder) %>%
     group_by(CHROM, pos) %>%
     summarize(nf_r        = n(),
-              h2_rep_raw  = 200 * sum(u_r^2),
-              h2_rep      = 200 * sum(u_r^2 - s_r),
+              h2_rep_raw  = 200 * PLOIDY * sum(u_r^2),
+              h2_rep      = 200 * PLOIDY * sum(u_r^2 - s_r),
               u_v         = list(u_r), s_v = list(s_r),
               .groups     = "drop")
 
@@ -293,7 +319,7 @@ one_chr <- function(f) {
   if (any(keep)) {
     U <- matrix(unlist(rep_tbl$u_v[keep]), ncol = nF, byrow = TRUE)
     S <- matrix(unlist(rep_tbl$s_v[keep]), ncol = nF, byrow = TRUE)
-    vcr[keep] <- 200 * vc_sum(U, S, fit_tau2(U, S))
+    vcr[keep] <- 200 * PLOIDY * vc_sum(U, S, fit_tau2(U, S))
   }
   rep_tbl <- rep_tbl %>% mutate(h2_rep_vc = vcr) %>% select(-u_v, -s_v, -nf_r)
 
