@@ -239,13 +239,65 @@ one_chr <- function(f) {
     stop(basename(f), ": need both TRT arms, have ",
          paste(setdiff(need, names(d)), collapse = ", "), " missing")
 
-  d %>%
+  d <- d %>%
     inner_join(ProportionSelect, by = "REP") %>%     # drops REPs with no Z row
     filter(!is.na(Proportion)) %>%
     mutate(denom = pmax(freq_C, AF_CUTOFF),
            u     = (freq_Z - freq_C) / sqrt(denom),
-           sv    = (vtot_Z + vtot_C) / denom) %>%
-    arrange(CHROM, pos, REP, founder) %>%
+           sv    = (vtot_Z + vtot_C) / denom,
+           Falcon_i_rep = dnorm(qnorm(1 - Proportion)) / Proportion) %>%
+    arrange(CHROM, pos, REP, founder)
+
+  # ── Replicate-based estimator (the reported one) ───────────────────────────
+  # The replicates are independent measurements of ONE shift, so average them
+  # before squaring.  The pipeline squares first and averages after, and since
+  #   mean(d^2) = mean(d)^2 + var(d)
+  # that puts the replicate scatter INSIDE the estimate.  At chrX:10230000 in
+  # AGE_SY20_M_no89 the reported h2 is 1.790 where the squared mean shift is
+  # 0.505: three quarters of it is scatter.  Founder B3 there has no signal at
+  # all -- its ten shifts fall either side of zero -- but the largest variance
+  # of any founder, so it contributes +0.378 of pure noise.
+  #
+  # var(d) scales as 1/N, so this term roughly doubles on the male X, where a
+  # fly carries half the chromosomes.  That is the male-X h2 excess, and it is
+  # arithmetic rather than anything to do with the covariance.
+  #
+  # Averaging first also lets the correction be MEASURED from the replicates
+  # rather than modelled -- var(d)/n, smaller by a factor of n, needing no
+  # mn.covmat, no lsei covariance and no smoothing R2.  That matters because the
+  # model is wrong per founder in both directions: at that window the observed
+  # replicate scatter is 1.5-3.4x the modelled variance for the three founders
+  # carrying the h2, and 0.14x for a founder at C = 0.003.
+  #
+  # Replicates differ in Proportion, so what they measure in common is the
+  # response per unit selection intensity, d/i, not d itself.
+  rep_tbl <- d %>%
+    mutate(e = (freq_Z - freq_C) / Falcon_i_rep) %>%
+    group_by(CHROM, pos, founder) %>%
+    summarize(Cb = mean(freq_C), me = mean(e), ve = var(e), nr = n(),
+              .groups = "drop") %>%
+    mutate(den = pmax(Cb, AF_CUTOFF),
+           u_r = me / sqrt(den),
+           s_r = (ve / nr) / den) %>%
+    arrange(CHROM, pos, founder) %>%
+    group_by(CHROM, pos) %>%
+    summarize(nf_r        = n(),
+              h2_rep_raw  = 200 * sum(u_r^2),
+              h2_rep      = 200 * sum(u_r^2 - s_r),
+              u_v         = list(u_r), s_v = list(s_r),
+              .groups     = "drop")
+
+  # variance component on the MEASURED replicate variance -> non-negative
+  keep <- rep_tbl$nf_r == nF
+  vcr  <- rep(NA_real_, nrow(rep_tbl))
+  if (any(keep)) {
+    U <- matrix(unlist(rep_tbl$u_v[keep]), ncol = nF, byrow = TRUE)
+    S <- matrix(unlist(rep_tbl$s_v[keep]), ncol = nF, byrow = TRUE)
+    vcr[keep] <- 200 * vc_sum(U, S, fit_tau2(U, S))
+  }
+  rep_tbl <- rep_tbl %>% mutate(h2_rep_vc = vcr) %>% select(-u_v, -s_v, -nf_r)
+
+  d %>%
     group_by(CHROM, pos, REP, Proportion) %>%
     summarize(raw_sum  = sum(u^2),
               bias_sum = sum(sv),
@@ -286,6 +338,7 @@ one_chr <- function(f) {
               n_floor  = mean(n_floor),
               n_repair = mean(n_repair),
               .groups  = "drop") %>%
+    left_join(rep_tbl, by = c("CHROM", "pos")) %>%
     mutate(h2_corr     = h2_raw - h2_bias,
            h2_corr_pos = pmax(0, h2_corr),
            sex         = sex,

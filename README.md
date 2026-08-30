@@ -806,14 +806,39 @@ Writes `<scan_name>.h2_falconer.txt`, one row per window:
 | `h2_bias` | the squaring bias |
 | `h2_corr` | `h2_raw − h2_bias`; unbiased, scatters negative at null windows |
 | `h2_corr_pos` | its positive part |
-| **`h2_vc`** | **per-window variance component — the recommended column** |
+| **`h2_rep`** | **replicate-based estimate — the recommended column** |
+| **`h2_rep_vc`** | same, floored at zero by a per-window variance component |
+| `h2_rep_raw` | the squared mean shift, before the `var/n` correction |
+| `h2_vc` | variance component on the *modelled* variance (superseded) |
 | `h2_mult`, `h2_rec` | the bias split into its multinomial and reconstruction halves |
 | `n_floor`, `n_repair` | founders at the AF floor; founders whose covariance was repaired |
 | `sex`, `xfactor` | what the smoothed data was built with |
 
 Add `--chr` for a single chromosome, `--out` for a different destination.
 
-**Use `h2_vc`.** h2 is a variance, so it is estimated as one: on the scale
+**Use `h2_rep`.** The replicates are independent measurements of one shift, so
+they are averaged *before* squaring. `Falc_H2` squares within each replicate and
+averages after, and since `mean(d²) = mean(d)² + var(d)` that leaves the replicate
+scatter inside the estimate. At chrX:10230000 in `AGE_SY20_M_no89` — the h2 peak
+for that scan — the pipeline reports 1.790 where the squared mean shift is 0.505.
+Founder B3 there has no signal (its ten shifts fall either side of zero) but the
+largest variance of any founder, and contributes +0.378 of pure noise.
+
+`var(d)` scales as 1/N, so this term roughly doubles on the male X where a fly
+carries half the chromosomes. **That is the male-X h2 excess** — arithmetic, not
+a covariance problem.
+
+Averaging first also makes the correction *measurable*: `var(d)/n`, smaller by a
+factor of n, needing no `mn.covmat`, no lsei covariance and no smoothing R². That
+matters because the model is wrong per founder in both directions — at that window
+the observed replicate scatter is 1.5–3.4× the modelled variance for the three
+founders carrying the h2, and 0.14× for a founder at C = 0.003.
+
+`h2_rep_vc` applies the same per-window variance component to the measured
+variance, giving a non-negative track.
+
+`h2_vc` (below) is the older form built on the modelled variance and is kept for
+comparison only. h2 is a variance, so it is estimated as one: on the scale
 `u = (Z−C)/√C` the statistic is `200/i² · Σu²`, each `û_f` carries known noise
 `s_f`, and `τ²` is fitted per window by ML from the founders at that window. Two
 things follow. Non-negativity is a boundary solution — `τ̂² = 0` is where the
