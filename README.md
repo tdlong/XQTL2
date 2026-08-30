@@ -798,10 +798,42 @@ Rscript pipeline/scripts/h2_from_scan.R \
     --rfile helpfiles/<project>/design.txt
 ```
 
-Writes `<scan_name>.h2_falconer.txt` with `h2_raw`, `h2_bias`, `h2_corr`
-(= raw − bias) and `h2_corr_pos` (its positive part), one row per window, plus
-the `sex`/`xfactor` the smoothed data was built with. Add `--chr` for a single
-chromosome, `--out` for a different destination.
+Writes `<scan_name>.h2_falconer.txt`, one row per window:
+
+| column | meaning |
+|--------|---------|
+| `h2_raw` | the uncorrected estimator (reproduces `Falc_H2`) |
+| `h2_bias` | the squaring bias |
+| `h2_corr` | `h2_raw − h2_bias`; unbiased, scatters negative at null windows |
+| `h2_corr_pos` | its positive part |
+| **`h2_vc`** | **per-window variance component — the recommended column** |
+| `h2_mult`, `h2_rec` | the bias split into its multinomial and reconstruction halves |
+| `n_floor`, `n_repair` | founders at the AF floor; founders whose covariance was repaired |
+| `sex`, `xfactor` | what the smoothed data was built with |
+
+Add `--chr` for a single chromosome, `--out` for a different destination.
+
+**Use `h2_vc`.** h2 is a variance, so it is estimated as one: on the scale
+`u = (Z−C)/√C` the statistic is `200/i² · Σu²`, each `û_f` carries known noise
+`s_f`, and `τ²` is fitted per window by ML from the founders at that window. Two
+things follow. Non-negativity is a boundary solution — `τ̂² = 0` is where the
+likelihood peaks at a null window — rather than a clamp, so `h2_vc` is never
+negative without anything being truncated. And founders are weighted by
+`1/(τ²+s_f)`, so a badly determined founder contributes less, where plain
+subtraction weights all founders equally. `τ²` is fitted per window, not
+genome-wide: a single global prior would be dragged to nothing by the ~95% of
+windows that are null and would shrink real QTL several-fold.
+
+#### Run `smooth_r2_diag` first
+
+`mn.covmat() + covar` is the variance of a **single window's** estimate, but the
+frequencies being squared are smoothed over ±`smooth_kb`, so their variance is
+smaller by the smoothing R². `hap_scan.R` already applies this on the Wald side
+(`pchisq(tstat / R2_SMOOTH)`), and `h2_from_scan.R` reads the same
+`<scan_name>.smooth_r2.txt`. **If that file is absent no correction is applied,
+the bias over-subtracts by 1/R², and `h2_corr` is pushed negative** — the script
+warns when this happens. Run the Step 5a R² diagnostic before relying on the
+magnitudes.
 
 It reads the smoothed `.rds`, **not** the `meansBySample` file, because the bias
 needs the variance of each frequency estimate — multinomial sampling *plus* the

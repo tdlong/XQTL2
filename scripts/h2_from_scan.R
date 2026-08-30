@@ -55,6 +55,43 @@ AF_CUTOFF   <- 0.01   # matches hap_scan.R
 CONFOUND_R  <- -0.99  # correlation below which a founder pair is unidentified
 FILL_HALF   <- 50L    # flanking windows averaged for the gap-fill anchors
 
+
+# ── Per-window variance component ────────────────────────────────────────────
+# h2 is a variance, so estimate it as one.  On the scale u_f = (Z_f-C_f)/sqrt(C_f)
+# the statistic is h2 = 200/i^2 * sum_f u_f^2, and each observed u_hat_f carries
+# known noise s_f = (vZ_f+vC_f)/C_f.  Model u_f ~ N(0, tau2) and fit tau2 by ML
+# from the nF founders AT THAT WINDOW:
+#
+#   u_hat_f ~ N(0, tau2 + s_f)
+#
+# tau2 is fit per window, not genome-wide.  That matters: with a single global
+# prior, the ~95% of windows that are null drag tau2 to nothing and real QTL get
+# shrunk by 5x.  Fitting locally has no such failure.
+#
+# Two properties this buys over subtracting the bias:
+#   - Non-negativity is a boundary solution (tau2 = 0 is where the likelihood
+#     actually peaks at a null window), not a clamp applied afterwards.
+#   - Founders are weighted by 1/(tau2+s_f), so a badly determined founder
+#     contributes less.  Plain subtraction weights every founder equally.
+#
+# Fisher-scoring fixed point, vectorised over windows.  At convergence
+# sum(w^2 u^2) = sum(w), the ML score equation, with w = 1/(tau2+s).
+fit_tau2 <- function(U, S, iter = 50L) {
+  t2 <- pmax(rowMeans(U^2 - S), 0)                  # method-of-moments start
+  for (k in seq_len(iter)) {
+    w  <- 1 / (t2 + S)
+    t2 <- pmax(rowSums(w^2 * (U^2 - S)) / rowSums(w^2), 0)
+  }
+  t2
+}
+
+# Posterior E[sum u^2 | u_hat] under the fitted tau2: shrink each founder by
+# k_f = tau2/(tau2+s_f), then add back the posterior variance k_f*s_f.
+vc_sum <- function(U, S, t2) {
+  k <- t2 / (t2 + S)
+  rowSums(k^2 * U^2 + k * S)
+}
+
 # ── Arguments ─────────────────────────────────────────────────────────────────
 args   <- commandArgs(trailingOnly = TRUE)
 parsed <- list()
@@ -75,6 +112,27 @@ for (need in c("dir", "scan", "rfile"))
 
 dirin <- file.path(parsed$dir, "Scans", parsed$scan)
 if (!dir.exists(dirin)) stop("no such scan directory: ", dirin)
+
+# ── R2 smoothing calibration ──────────────────────────────────────────────────
+# mn.covmat() + covar describe a SINGLE window's estimate, but the frequencies
+# being squared are smoothed over +/-smooth_kb, so their variance is smaller.
+# hap_scan.R already corrects for this on the Wald side: it evaluates
+# pchisq(tstat / R2_SMOOTH), which is the statistic recomputed against a
+# covariance of R2 * Sigma_single.  So Var(smoothed) = R2 * Var(single), and
+# the same factor belongs on the h2 bias.  Without it the bias over-subtracts
+# by 1/R2 and drives the floor negative (XQTL2 #40).
+#
+# Same file and same default as hap_scan.R: absent means no correction.
+r2_file <- file.path(dirin, paste0(parsed$scan, ".smooth_r2.txt"))
+R2_SMOOTH <- if (file.exists(r2_file)) {
+  r2 <- as.numeric(readLines(r2_file))
+  cat(sprintf("Smoothing R2: %.4f (variance of the smoothed estimate is %.4f of a single window's)\n", r2, r2))
+  r2
+} else {
+  cat("No ", basename(r2_file), " -- no smoothing correction (R2 = 1).\n",
+      "  The bias will over-subtract; run smooth_r2_diag.sh to generate it.\n", sep = "")
+  1.0
+}
 
 design.df <- read.table(parsed$rfile, header = TRUE)
 if (!"Proportion" %in% names(design.df))
@@ -169,7 +227,8 @@ one_chr <- function(f) {
     ungroup() %>%
     # Num is already chrX-scaled; 2*Num is the chromosome count.
     mutate(mult = pnorm_ * (1 - pnorm_) / (2 * Num),
-           vtot = mult + vrec) %>%
+           # R2 converts a single-window variance to the smoothed estimate's
+           vtot = R2_SMOOTH * (mult + vrec)) %>%
     select(CHROM, pos, REP, founder, TRT, freq, vtot, mult, vrec, repaired) %>%
     pivot_wider(names_from = TRT, values_from = c(freq, vtot, mult, vrec, repaired))
 
@@ -181,20 +240,39 @@ one_chr <- function(f) {
   d %>%
     inner_join(ProportionSelect, by = "REP") %>%     # drops REPs with no Z row
     filter(!is.na(Proportion)) %>%
-    mutate(denom = pmax(freq_C, AF_CUTOFF)) %>%
+    mutate(denom = pmax(freq_C, AF_CUTOFF),
+           u     = (freq_Z - freq_C) / sqrt(denom),
+           sv    = (vtot_Z + vtot_C) / denom) %>%
+    arrange(CHROM, pos, REP, founder) %>%
     group_by(CHROM, pos, REP, Proportion) %>%
-    summarize(raw_sum  = sum((freq_Z - freq_C)^2 / denom),
-              bias_sum = sum((vtot_Z + vtot_C)   / denom),
+    summarize(raw_sum  = sum(u^2),
+              bias_sum = sum(sv),
               mult_sum = sum((mult_Z + mult_C)   / denom),
               rec_sum  = sum((vrec_Z + vrec_C)   / denom),
               n_floor  = sum(freq_C <= AF_CUTOFF),
               n_repair = sum(repaired_C | repaired_Z),
+              nf       = n(),
+              u_v      = list(u), s_v = list(sv),
               .groups  = "drop") %>%
+    # variance component, one tau2 per (window, replicate)
+    { dd <- .
+      keep <- dd$nf == nF
+      vcs  <- rep(NA_real_, nrow(dd))
+      if (any(keep)) {
+        U  <- matrix(unlist(dd$u_v[keep]), ncol = nF, byrow = TRUE)
+        S  <- matrix(unlist(dd$s_v[keep]), ncol = nF, byrow = TRUE)
+        t2 <- fit_tau2(U, S)
+        vcs[keep] <- vc_sum(U, S, t2)
+      }
+      dd$vc_sum <- vcs
+      dd %>% select(-u_v, -s_v, -nf)
+    } %>%
     mutate(Falcon_i = dnorm(qnorm(1 - Proportion)) / Proportion,
            h2_raw   = 200 * raw_sum  / Falcon_i^2,
            h2_bias  = 200 * bias_sum / Falcon_i^2,
            h2_mult  = 200 * mult_sum / Falcon_i^2,
-           h2_rec   = 200 * rec_sum  / Falcon_i^2) %>%
+           h2_rec   = 200 * rec_sum  / Falcon_i^2,
+           h2_vc    = 200 * vc_sum   / Falcon_i^2) %>%
     # the pipeline's h2 is the mean over replicates
     group_by(CHROM, pos) %>%
     summarize(nrepl    = n(),
@@ -202,6 +280,7 @@ one_chr <- function(f) {
               h2_bias  = mean(h2_bias),
               h2_mult  = mean(h2_mult),
               h2_rec   = mean(h2_rec),
+              h2_vc    = mean(h2_vc),
               n_floor  = mean(n_floor),
               n_repair = mean(n_repair),
               .groups  = "drop") %>%
