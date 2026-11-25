@@ -110,22 +110,25 @@ python scripts/process.py --task_id ${SLURM_ARRAY_TASK_ID}
 
 ## Downloads
 
-Transfers, including `wget` and `curl` pulls from public archives, run on the
-data-transfer host and nowhere else: not on login nodes, not on compute nodes,
-not inside Slurm jobs. Transfers started elsewhere get killed.
+Transfers, including `wget` pulls from public archives, run on the
+data-transfer host `access-hpc3.rcic.uci.edu` and nowhere else: not on login
+nodes, not on compute nodes, not inside Slurm jobs. Transfers started elsewhere
+get killed.
 
-- **Host:** `access-hpc3.rcic.uci.edu`. It mounts the same filesystems and has
-  only transfer software: no modules, no Slurm.
-- **Start it from the login node** rather than logging in there: a short script
-  that runs `ssh access-hpc3.rcic.uci.edu "cd $PWD && nohup bash <fetch script>
-  </dev/null >/dev/null 2>&1 &"`. The repo path is the same on both hosts.
-  See `scripts_oneoffs/malathion/fetch_on_dtn.sh` in XQTL2-dev.
-- **The fetch script logs to a file under `logs/`** so progress is visible from
-  the login node, verifies every file (md5 from the source) and leaves a marker
-  beside each good one.
-- **The Slurm chain gates on the markers:** the submitter refuses to start
-  unless every file is verified, so a partial download can never reach the
-  aligner.
+The transfer host has a **restricted shell**: `cd` and scripts are refused, so
+a download there is one command with absolute paths. Put a URL list in the repo
+and type:
+
+```
+wget -c -i /dfs7/adl/<lab>/<repo>/helpfiles/<project>/urls.txt -P /dfs7/adl/<lab>/<repo>/data/raw/<project>
+```
+
+`-c` resumes, so the same command can be repeated after an interruption.
+Then, back on the login node, submit a small Slurm job that checks every file
+(size and md5 from the source), renames as the pipeline expects, and leaves a
+marker beside each good one; the submitter for the real chain refuses to start
+until every marker exists. Example: `scripts_oneoffs/malathion/verify_reads.sh`
+in XQTL2-dev.
 
 Reference: https://rcic.uci.edu/storage/data-transfer.html
 
