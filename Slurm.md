@@ -110,18 +110,14 @@ python scripts/process.py --task_id ${SLURM_ARRAY_TASK_ID}
 
 ## Downloads
 
-Downloads do not go in batch jobs. HPC3 routes `wget`, `curl`, `rsync`, `scp`,
-`sftp` and `rclone` through its data-transfer host, and transfers started on
-compute nodes get killed:
-
-- **Host:** `access-hpc3.rcic.uci.edu`. It mounts the same filesystems, has no
-  Slurm and no application modules; it is for moving data only.
-- **Long downloads:** run them detached there, e.g.
-  `nohup bash scripts_oneoffs/<project>/fetch.sh &`, and have the script log to
-  a file under `logs/`.
-- **Verify, then submit:** check an md5 for every file and leave a marker beside
-  it, so the Slurm chain that follows can refuse to start on incomplete data
-  instead of discovering it a day later in the aligner.
+Pulling public data onto the cluster (SRA/ENA, reference files) is a batch job,
+not a login-node process: login nodes are shared and long transfers there get
+killed. Submit the download with `sbatch`, one task per file or run, and make
+every task verify what it fetched (md5 from the source, or at least size) and
+exit non-zero otherwise, so the jobs that follow can wait with
+`--dependency=afterok` and never start on a partial file. Pushing data from a
+laptop or another server to the cluster goes through the data-transfer host,
+`access-hpc3.rcic.uci.edu` (rsync, scp, sftp, rclone; no Slurm there).
 
 Reference: https://rcic.uci.edu/storage/data-transfer.html
 
