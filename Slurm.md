@@ -108,6 +108,23 @@ module load R/4.2.2
 python scripts/process.py --task_id ${SLURM_ARRAY_TASK_ID}
 ```
 
+## Downloads
+
+Downloads do not go in batch jobs. HPC3 routes `wget`, `curl`, `rsync`, `scp`,
+`sftp` and `rclone` through its data-transfer host, and transfers started on
+compute nodes get killed:
+
+- **Host:** `access-hpc3.rcic.uci.edu`. It mounts the same filesystems, has no
+  Slurm and no application modules; it is for moving data only.
+- **Long downloads:** run them detached there, e.g.
+  `nohup bash scripts_oneoffs/<project>/fetch.sh &`, and have the script log to
+  a file under `logs/`.
+- **Verify, then submit:** check an md5 for every file and leave a marker beside
+  it, so the Slurm chain that follows can refuse to start on incomplete data
+  instead of discovering it a day later in the aligner.
+
+Reference: https://rcic.uci.edu/storage/data-transfer.html
+
 ## GPU Partitions
 
 ### GPU Options
